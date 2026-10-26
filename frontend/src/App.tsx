@@ -1,0 +1,134 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import Navbar from './components/Navbar';
+import Kiosk from './components/Kiosk';
+import Dashboard from './components/Dashboard';
+import Employees from './components/Employees';
+import Reports from './components/Reports';
+import Toast, { playChime } from './components/Toast';
+import wsClient, { ConnectionStatus } from './services/websocket';
+import api from './services/api';
+import { AttendanceResult, TabType, ToastNotification, User } from './types';
+
+export const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<TabType>('kiosk');
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [recentEvents, setRecentEvents] = useState<AttendanceResult[]>([]);
+  const [wsStatus, setWsStatus] = useState<ConnectionStatus>('DISCONNECTED');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Add toast helper
+  const addToast = useCallback(
+    (toast: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string; duration?: number }) => {
+      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newToast: ToastNotification = {
+        id,
+        type: toast.type,
+        title: toast.title,
+        message: toast.message,
+        duration: toast.duration || 5000,
+        timestamp: new Date(),
+      };
+
+      setToasts((prev) => [newToast, ...prev].slice(0, 5));
+
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, newToast.duration);
+    },
+    []
+  );
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Fetch current authenticated user if token present
+  useEffect(() => {
+    const token = api.getToken();
+    if (token) {
+      api.getMe()
+        .then((user) => setCurrentUser(user))
+        .catch(() => api.logout());
+    }
+  }, []);
+
+  // WebSocket Connection and Event Handling
+  useEffect(() => {
+    wsClient.connect();
+
+    const unsubStatus = wsClient.onStatusChange((status) => {
+      setWsStatus(status);
+    });
+
+    const unsubAttendance = wsClient.onAttendanceEvent((event: AttendanceResult) => {
+      // Add event to front of recentEvents list
+      setRecentEvents((prev) => [event, ...prev].slice(0, 25));
+
+      // If event was received over WebSocket from an external kiosk or CCTV runner
+      if (event.event_result !== 'COOLDOWN_IGNORED') {
+        if (event.is_late) {
+          playChime('late');
+        } else {
+          playChime('success');
+        }
+
+        addToast({
+          type: event.is_late ? 'warning' : 'success',
+          title: `Attendance Event: ${event.full_name}`,
+          message: `${event.message} (${event.status})`,
+        });
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubAttendance();
+      wsClient.disconnect();
+    };
+  }, [addToast]);
+
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
+    addToast({
+      type: 'info',
+      title: 'Signed Out',
+      message: 'You have been signed out from the enterprise console.',
+    });
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-brand-500 selection:text-white">
+      {/* Top Enterprise Navigation */}
+      <Navbar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        wsStatus={wsStatus}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+      />
+
+      {/* Floating Notifications */}
+      <Toast toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Main Tab Views */}
+      <main className="flex-1 w-full pb-12">
+        {activeTab === 'kiosk' && (
+          <Kiosk onNotify={addToast} recentEvents={recentEvents} />
+        )}
+        {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'employees' && <Employees onNotify={addToast} />}
+        {activeTab === 'reports' && <Reports onNotify={addToast} />}
+      </main>
+
+      {/* Enterprise Footer */}
+      <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-500">
+        <p>
+          Enterprise Smart Attendance System • AES-256 Biometric Vector Encryption • Sub-50ms Neural Facial Matching
+        </p>
+      </footer>
+    </div>
+  );
+};
+
+export default App;

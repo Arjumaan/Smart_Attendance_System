@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: smart_attendance_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-attendance_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-attendance_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: smart_attendance_backend
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-attendance_db}
+      AES_SECRET_KEY: ${AES_SECRET_KEY:-kE8zU9wY3nB7vC2xM1qP5sD8fG4hJ7kL9zX2cV5bN8m=}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-d9f8e7c6b5a43210fedcba9876543210abcdef0123456789abcdef0123456789}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 480
+      FACE_MATCH_THRESHOLD: 0.75
+      COOLDOWN_SECONDS: 300
+      WORK_DAY_START_TIME: "09:00"
+      LATE_CUTOFF_TIME: "09:15"
+      WORK_DAY_END_TIME: "17:00"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: smart_attendance_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
