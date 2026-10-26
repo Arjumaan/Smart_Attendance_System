@@ -1,0 +1,168 @@
+import { AttendanceResult } from '../types';
+
+export type ConnectionStatus = 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED';
+
+type AttendanceCallback = (data: AttendanceResult) => void;
+type StatusCallback = (status: ConnectionStatus) => void;
+
+class WebSocketClient {
+  private socket: WebSocket | null = null;
+  private status: ConnectionStatus = 'DISCONNECTED';
+  private attendanceListeners: Set<AttendanceCallback> = new Set();
+  private statusListeners: Set<StatusCallback> = new Set();
+  private reconnectAttempts = 0;
+  private maxReconnectDelay = 10000;
+  private pingIntervalId: number | null = null;
+  private reconnectTimeoutId: number | null = null;
+  private explicitDisconnect = false;
+
+  private getWebSocketUrl(): string {
+    if (import.meta.env.VITE_WS_URL) {
+      return import.meta.env.VITE_WS_URL;
+    }
+    const isHttps = window.location.protocol === 'https:';
+    const protocol = isHttps ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws`;
+  }
+
+  public connect(): void {
+    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    this.explicitDisconnect = false;
+    this.setStatus('CONNECTING');
+
+    const url = this.getWebSocketUrl();
+
+    try {
+      this.socket = new WebSocket(url);
+
+      this.socket.onopen = () => {
+        this.setStatus('CONNECTED');
+        this.reconnectAttempts = 0;
+        this.startHeartbeat();
+
+        this.send({
+          type: 'SUBSCRIBE',
+          channel: 'attendance',
+        });
+      };
+
+      this.socket.onmessage = (event: MessageEvent) => {
+        try {
+          const payload = JSON.parse(event.data);
+          this.handleMessage(payload);
+        } catch {
+          if (event.data === 'PONG') {
+            // Heartbeat ack
+          }
+        }
+      };
+
+      this.socket.onclose = () => {
+        this.stopHeartbeat();
+        this.setStatus('DISCONNECTED');
+        if (!this.explicitDisconnect) {
+          this.scheduleReconnect();
+        }
+      };
+
+      this.socket.onerror = () => {
+        this.socket?.close();
+      };
+    } catch {
+      this.setStatus('DISCONNECTED');
+      this.scheduleReconnect();
+    }
+  }
+
+  public disconnect(): void {
+    this.explicitDisconnect = true;
+    this.stopHeartbeat();
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    this.setStatus('DISCONNECTED');
+  }
+
+  public getStatus(): ConnectionStatus {
+    return this.status;
+  }
+
+  public onAttendanceEvent(callback: AttendanceCallback): () => void {
+    this.attendanceListeners.add(callback);
+    return () => {
+      this.attendanceListeners.delete(callback);
+    };
+  }
+
+  public onStatusChange(callback: StatusCallback): () => void {
+    this.statusListeners.add(callback);
+    callback(this.status);
+    return () => {
+      this.statusListeners.delete(callback);
+    };
+  }
+
+  private setStatus(newStatus: ConnectionStatus): void {
+    if (this.status !== newStatus) {
+      this.status = newStatus;
+      this.statusListeners.forEach((listener) => listener(newStatus));
+    }
+  }
+
+  private handleMessage(payload: { type: string; data?: unknown }): void {
+    if (payload.type === 'ATTENDANCE_EVENT' && payload.data) {
+      const attendanceData = payload.data as AttendanceResult;
+      this.attendanceListeners.forEach((callback) => {
+        try {
+          callback(attendanceData);
+        } catch (err) {
+          console.error('Error invoking attendance listener:', err);
+        }
+      });
+    }
+  }
+
+  private send(data: unknown): void {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(data));
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.pingIntervalId = window.setInterval(() => {
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: 'PING' }));
+      }
+    }, 20000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+    }
+    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), this.maxReconnectDelay);
+    this.reconnectAttempts++;
+    this.reconnectTimeoutId = window.setTimeout(() => {
+      this.connect();
+    }, delay);
+  }
+}
+
+export const wsClient = new WebSocketClient();
+export default wsClient;

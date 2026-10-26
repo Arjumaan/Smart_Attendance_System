@@ -1,80 +1,166 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, LogOut, User as UserIcon } from 'lucide-react';
-import { User } from '../api/types';
+import {
+  Camera,
+  BarChart3,
+  Users,
+  FileSpreadsheet,
+  Radio,
+  Clock,
+  ShieldCheck,
+  User as UserIcon,
+  LogOut,
+} from 'lucide-react';
+import { TabType, User } from '../types';
+import { ConnectionStatus } from '../services/websocket';
 
-interface NavbarProps {
-  user: User | null;
-  onLogout: () => void;
+export interface NavbarProps {
+  activeTab?: TabType;
+  onTabChange?: (tab: TabType) => void;
+  wsStatus?: ConnectionStatus;
+  currentUser?: User | null;
+  user?: User | any | null;
+  onLogout?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
-  const [time, setTime] = useState<string>('');
+export const Navbar: React.FC<NavbarProps> = ({
+  activeTab = 'kiosk',
+  onTabChange,
+  wsStatus = 'CONNECTED',
+  currentUser,
+  user,
+  onLogout,
+}) => {
+  const activeUser = currentUser || user;
+  const [time, setTime] = useState<string>(new Date().toLocaleTimeString());
+  const [dateStr, setDateStr] = useState<string>(
+    new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  );
 
   useEffect(() => {
-    const updateTime = () => {
+    const timer = setInterval(() => {
       const now = new Date();
-      setTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
+      setTime(now.toLocaleTimeString());
+      setDateStr(now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
+  const navItems: { id: TabType; label: string; icon: React.FC<{ className?: string }> }[] = [
+    { id: 'kiosk', label: 'Live Kiosk', icon: Camera },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { id: 'employees', label: 'Employees', icon: Users },
+    { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
+  ];
+
   return (
-    <header className="h-16 border-b border-slate-800 bg-slate-900/70 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-40">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-          <ShieldCheck className="w-6 h-6 text-white" />
-        </div>
-        <div>
-          <h1 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
-            Enterprise Smart Attendance
-            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              Face Biometrics
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400">High-Concurrency Facial Recognition System</p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-6">
-        <div className="hidden md:flex flex-col items-end">
-          <span className="text-sm font-mono font-medium text-slate-200">{time}</span>
-          <span className="text-xs text-slate-500">Live Server Time</span>
-        </div>
-
-        <div className="h-6 w-px bg-slate-800 hidden md:block" />
-
-        {user ? (
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
-              <UserIcon className="w-5 h-5" />
-            </div>
-            <div className="text-left hidden sm:block">
-              <p className="text-sm font-semibold text-slate-200">{user.full_name}</p>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-slate-400 font-mono">{user.employee_id}</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
-                  {user.role}
-                </span>
+    <header className="sticky top-0 z-40 w-full bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          {/* Brand Logo & Name */}
+          <div
+            className="flex items-center space-x-3 cursor-pointer"
+            onClick={() => onTabChange && onTabChange('kiosk')}
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-950/50">
+              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
               </div>
             </div>
-            <button
-              onClick={onLogout}
-              title="Sign Out"
-              className="p-2 ml-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-base font-bold tracking-tight text-white uppercase">
+                  Apex<span className="text-emerald-400">Attend</span>
+                </span>
+                <span className="px-1.5 py-0.5 text-[10px] uppercase font-semibold tracking-wider bg-slate-800 text-slate-300 rounded border border-slate-700">
+                  Enterprise
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 hidden sm:block">Biometric Access & Presence Tracking</p>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          {onTabChange && (
+            <nav className="flex items-center space-x-1 sm:space-x-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onTabChange(item.id)}
+                    className={`flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? 'bg-slate-800 text-emerald-400 border border-emerald-500/30 shadow-md shadow-emerald-950/20'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+
+          {/* Right Status Controls */}
+          <div className="flex items-center space-x-4">
+            {/* Real-time Clock */}
+            <div className="hidden lg:flex items-center space-x-2 text-xs font-mono text-slate-300 bg-slate-850 px-3 py-1.5 rounded-lg border border-slate-800">
+              <Clock className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{time}</span>
+              <span className="text-slate-500">|</span>
+              <span className="text-slate-400">{dateStr}</span>
+            </div>
+
+            {/* WebSocket Sync Status */}
+            <div
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                wsStatus === 'CONNECTED'
+                  ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
+                  : wsStatus === 'CONNECTING'
+                  ? 'bg-amber-950/60 border-amber-800/60 text-amber-400'
+                  : 'bg-rose-950/60 border-rose-800/60 text-rose-400'
+              }`}
+              title={`Live WebSocket Gateway: ${wsStatus}`}
             >
-              <LogOut className="w-5 h-5" />
-            </button>
+              <Radio
+                className={`w-3.5 h-3.5 ${
+                  wsStatus === 'CONNECTED'
+                    ? 'animate-pulse text-emerald-400'
+                    : wsStatus === 'CONNECTING'
+                    ? 'animate-spin text-amber-400'
+                    : 'text-rose-400'
+                }`}
+              />
+              <span className="hidden md:inline">
+                {wsStatus === 'CONNECTED' ? 'Live Sync' : wsStatus === 'CONNECTING' ? 'Connecting...' : 'Offline'}
+              </span>
+            </div>
+
+            {/* User Profile / Admin Menu */}
+            {activeUser ? (
+              <div className="flex items-center space-x-2 pl-2 border-l border-slate-800">
+                <div className="hidden sm:block text-right">
+                  <p className="text-xs font-semibold text-slate-200">{activeUser.full_name}</p>
+                  <p className="text-[10px] text-emerald-400 font-mono tracking-wider">{activeUser.role}</p>
+                </div>
+                <button
+                  onClick={onLogout}
+                  className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1 text-xs text-slate-400 bg-slate-800/50 px-2.5 py-1.5 rounded-lg border border-slate-700/50">
+                <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                <span className="font-mono">Kiosk Mode</span>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-emerald-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Kiosk Active
-            </span>
-          </div>
-        )}
+        </div>
       </div>
     </header>
   );

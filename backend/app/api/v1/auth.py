@@ -12,6 +12,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/login", response_model=Token)
+@router.post("/token", response_model=Token)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate with corporate email and password, returning JWT access token."""
     user = db.query(User).filter(User.email == credentials.email.strip()).first()

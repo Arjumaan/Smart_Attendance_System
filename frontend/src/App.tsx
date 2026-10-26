@@ -47,7 +47,7 @@ export const App: React.FC = () => {
     const token = api.getToken();
     if (token) {
       api.getMe()
-        .then((user) => setCurrentUser(user))
+        .then((user: User) => setCurrentUser(user))
         .catch(() => api.logout());
     }
   }, []);
@@ -56,15 +56,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     wsClient.connect();
 
-    const unsubStatus = wsClient.onStatusChange((status) => {
+    const unsubStatus = wsClient.onStatusChange((status: ConnectionStatus) => {
       setWsStatus(status);
     });
 
     const unsubAttendance = wsClient.onAttendanceEvent((event: AttendanceResult) => {
-      // Add event to front of recentEvents list
       setRecentEvents((prev) => [event, ...prev].slice(0, 25));
 
-      // If event was received over WebSocket from an external kiosk or CCTV runner
       if (event.event_result !== 'COOLDOWN_IGNORED') {
         if (event.is_late) {
           playChime('late');

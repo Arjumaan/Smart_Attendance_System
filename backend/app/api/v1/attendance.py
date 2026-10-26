@@ -99,6 +99,7 @@ def get_attendance_logs(
 
 @router.get("/summary", response_model=DailySummaryResponse)
 @router.get("/stats", response_model=DailySummaryResponse)
+@router.get("/stats/dashboard", response_model=DailySummaryResponse)
 def get_dashboard_summary(
     target_date: Optional[date] = Query(None, description="Target date (defaults to today)"),
     db: Session = Depends(get_db),
