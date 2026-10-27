@@ -26,7 +26,40 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error ensuring database tables: {e}")
 
-    # 2. Warm up in-memory biometric vector cache from database
+    # 2. Guarantee essential administrator account exists
+    db = SessionLocal()
+    try:
+        from backend.app.core.security import UserRole, get_password_hash
+        from backend.app.models.department import Department
+        from backend.app.models.user import User
+
+        admin = db.query(User).filter(User.email == "admin@company.com").first()
+        if not admin:
+            dept = db.query(Department).filter(Department.code == "HR").first()
+            if not dept:
+                dept = Department(name="Human Resources", code="HR", description="People Operations")
+                db.add(dept)
+                db.commit()
+                db.refresh(dept)
+            admin = User(
+                employee_id="EMP001",
+                full_name="System Administrator",
+                email="admin@company.com",
+                hashed_password=get_password_hash("Password123!"),
+                role=UserRole.ADMIN.value,
+                department_id=dept.id,
+                is_active=True,
+                shift_start="09:00",
+            )
+            db.add(admin)
+            db.commit()
+            logger.info("Guaranteed default Administrator: admin@company.com")
+    except Exception as e:
+        logger.warning(f"Default admin verification notice: {e}")
+    finally:
+        db.close()
+
+    # 3. Warm up in-memory biometric vector cache from database
     db = SessionLocal()
     try:
         count = default_cache.load_from_db(db)

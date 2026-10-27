@@ -1,10 +1,26 @@
 """User and Department Pydantic schemas."""
 
 from datetime import datetime
+import re
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from backend.app.core.security import UserRole
+
+
+def validate_password_complexity(v: str) -> str:
+    """Validate enterprise password policy: >=8 chars, uppercase, lowercase, digit, special char."""
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters long.")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("Password must contain at least one uppercase letter (A-Z).")
+    if not re.search(r"[a-z]", v):
+        raise ValueError("Password must contain at least one lowercase letter (a-z).")
+    if not re.search(r"\d", v):
+        raise ValueError("Password must contain at least one digit (0-9).")
+    if not re.search(r"[^A-Za-z0-9]", v):
+        raise ValueError("Password must contain at least one special character.")
+    return v
 
 
 class DepartmentBase(BaseModel):
@@ -35,7 +51,12 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def check_password_complexity(cls, v: str) -> str:
+        return validate_password_complexity(v)
 
 
 class UserUpdate(BaseModel):
@@ -46,6 +67,13 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     shift_start: Optional[str] = None
     password: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def check_password_complexity(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return validate_password_complexity(v)
+        return v
 
 
 class UserOut(UserBase):

@@ -19,6 +19,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from backend.app.models.attendance import AttendanceLog
@@ -385,16 +386,86 @@ def generate_report(
         if dept_obj:
             dept_name = dept_obj.name
 
-    if employee_id:
-        query = query.filter(User.employee_id == employee_id)
+    if employee_id and employee_id.strip():
+        term = f"%{employee_id.strip()}%"
+        query = query.filter(
+            or_(
+                User.employee_id.ilike(term),
+                User.full_name.ilike(term),
+                User.email.ilike(term),
+            )
+        )
 
-    if status:
-        query = query.filter(AttendanceLog.status == status)
+    records = None
+    if status and status.strip():
+        stat_upper = status.strip().upper()
+        if stat_upper == "LATE":
+            query = query.filter(
+                or_(
+                    AttendanceLog.status == "LATE",
+                    AttendanceLog.is_late.is_(True),
+                )
+            )
+        elif stat_upper == "PRESENT":
+            query = query.filter(
+                AttendanceLog.status == "PRESENT",
+                AttendanceLog.is_late.is_(False),
+            )
+        elif stat_upper == "ABSENT":
+            # For absentees, generate synthetic attendance records for unlogged active employees
+            target_date = end_date or start_date or date.today()
+            active_q = (
+                db.query(User)
+                .options(joinedload(User.department))
+                .filter(User.is_active.is_(True))
+            )
+            if department_id:
+                active_q = active_q.filter(User.department_id == department_id)
+            if employee_id and employee_id.strip():
+                clean_term = f"%{employee_id.strip()}%"
+                active_q = active_q.filter(
+                    or_(
+                        User.employee_id.ilike(clean_term),
+                        User.full_name.ilike(clean_term),
+                        User.email.ilike(clean_term),
+                    )
+                )
 
-    records = (
-        query.order_by(AttendanceLog.date.desc(), AttendanceLog.check_in_time.asc())
-        .all()
-    )
+            logged_uids = {
+                uid
+                for (uid,) in db.query(AttendanceLog.user_id)
+                .filter(AttendanceLog.date == target_date)
+                .all()
+            }
+
+            absent_users = [u for u in active_q.all() if u.id not in logged_uids]
+            now_dt = datetime.now()
+            records = [
+                AttendanceLog(
+                    id=-u.id,
+                    user_id=u.id,
+                    user=u,
+                    date=target_date,
+                    check_in_time=None,
+                    check_out_time=None,
+                    total_hours=0.0,
+                    status="ABSENT",
+                    is_late=False,
+                    source="SYSTEM",
+                    notes="No presence recorded.",
+                    created_at=now_dt,
+                    updated_at=now_dt,
+                )
+                for u in absent_users
+            ]
+        else:
+            query = query.filter(AttendanceLog.status == stat_upper)
+
+    if records is None:
+        records = (
+            query.order_by(AttendanceLog.date.desc(), AttendanceLog.check_in_time.asc())
+            .all()
+        )
 
     fmt = report_format.lower().strip()
     date_str = f"{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"

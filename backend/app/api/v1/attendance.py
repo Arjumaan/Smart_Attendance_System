@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from backend.app.api.deps import (
@@ -75,27 +76,100 @@ def get_attendance_logs(
     current_user: Optional[CurrentUser] = Depends(get_optional_current_user),
 ):
     """Retrieve filtered attendance records with pagination."""
+    limit_val = limit if isinstance(limit, int) else 100
+    offset_val = offset if isinstance(offset, int) else 0
     query = (
         db.query(AttendanceLog)
         .join(User, AttendanceLog.user_id == User.id)
         .options(joinedload(AttendanceLog.user).joinedload(User.department))
     )
 
-    if start_date:
+    if isinstance(start_date, date):
         query = query.filter(AttendanceLog.date >= start_date)
-    if end_date:
+    if isinstance(end_date, date):
         query = query.filter(AttendanceLog.date <= end_date)
-    if department_id:
+    if isinstance(department_id, int):
         query = query.filter(User.department_id == department_id)
-    if employee_id:
-        query = query.filter(User.employee_id == employee_id.strip())
-    if status:
-        query = query.filter(AttendanceLog.status == status.strip().upper())
+    if isinstance(employee_id, str) and employee_id.strip():
+        term = f"%{employee_id.strip()}%"
+        query = query.filter(
+            or_(
+                User.employee_id.ilike(term),
+                User.full_name.ilike(term),
+                User.email.ilike(term),
+            )
+        )
+
+    if isinstance(status, str) and status.strip():
+        stat_upper = status.strip().upper()
+        if stat_upper == "LATE":
+            query = query.filter(
+                or_(
+                    AttendanceLog.status == "LATE",
+                    AttendanceLog.is_late.is_(True),
+                )
+            )
+        elif stat_upper == "PRESENT":
+            query = query.filter(
+                AttendanceLog.status == "PRESENT",
+                AttendanceLog.is_late.is_(False),
+            )
+        elif stat_upper == "ABSENT":
+            # For absentees, return active employees who have no record in the specified date range (or today)
+            target_date = end_date or start_date or date.today()
+            active_q = (
+                db.query(User)
+                .options(joinedload(User.department))
+                .filter(User.is_active.is_(True))
+            )
+            if isinstance(department_id, int):
+                active_q = active_q.filter(User.department_id == department_id)
+            if isinstance(employee_id, str) and employee_id.strip():
+                clean_term = f"%{employee_id.strip()}%"
+                active_q = active_q.filter(
+                    or_(
+                        User.employee_id.ilike(clean_term),
+                        User.full_name.ilike(clean_term),
+                        User.email.ilike(clean_term),
+                    )
+                )
+
+            logged_uids = {
+                uid
+                for (uid,) in db.query(AttendanceLog.user_id)
+                .filter(AttendanceLog.date == target_date)
+                .all()
+            }
+
+            absent_users = [u for u in active_q.all() if u.id not in logged_uids]
+            now_dt = datetime.now()
+            return [
+                AttendanceLogOut(
+                    id=-u.id,
+                    user_id=u.id,
+                    employee_id=u.employee_id,
+                    full_name=u.full_name,
+                    department_name=u.department.name if u.department else "Unassigned",
+                    date=target_date,
+                    check_in_time=None,
+                    check_out_time=None,
+                    total_hours=0.0,
+                    status="ABSENT",
+                    is_late=False,
+                    source="SYSTEM",
+                    notes="No biometric check-in recorded for this date.",
+                    created_at=now_dt,
+                    updated_at=now_dt,
+                )
+                for u in absent_users[offset_val : offset_val + limit_val]
+            ]
+        else:
+            query = query.filter(AttendanceLog.status == stat_upper)
 
     records = (
         query.order_by(AttendanceLog.date.desc(), AttendanceLog.check_in_time.desc())
-        .offset(offset)
-        .limit(limit)
+        .offset(offset_val)
+        .limit(limit_val)
         .all()
     )
 

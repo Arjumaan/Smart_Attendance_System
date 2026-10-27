@@ -16,6 +16,21 @@ class WebSocketClient {
   private reconnectTimeoutId: number | null = null;
   private explicitDisconnect = false;
 
+  constructor() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        if (this.status === 'DISCONNECTED') {
+          this.connect();
+        }
+      });
+      window.addEventListener('focus', () => {
+        if (this.status === 'DISCONNECTED') {
+          this.connect();
+        }
+      });
+    }
+  }
+
   private getWebSocketUrl(): string {
     if (import.meta.env.VITE_WS_URL) {
       return import.meta.env.VITE_WS_URL;
@@ -36,9 +51,25 @@ class WebSocketClient {
     const url = this.getWebSocketUrl();
 
     try {
-      this.socket = new WebSocket(url);
+      // Detach handlers from any existing socket
+      if (this.socket) {
+        this.socket.onopen = null;
+        this.socket.onmessage = null;
+        this.socket.onclose = null;
+        this.socket.onerror = null;
+        try {
+          this.socket.close();
+        } catch {
+          // Ignore close error on stale socket
+        }
+        this.socket = null;
+      }
 
-      this.socket.onopen = () => {
+      const ws = new WebSocket(url);
+      this.socket = ws;
+
+      ws.onopen = () => {
+        if (this.socket !== ws) return;
         this.setStatus('CONNECTED');
         this.reconnectAttempts = 0;
         this.startHeartbeat();
@@ -49,7 +80,8 @@ class WebSocketClient {
         });
       };
 
-      this.socket.onmessage = (event: MessageEvent) => {
+      ws.onmessage = (event: MessageEvent) => {
+        if (this.socket !== ws) return;
         try {
           const payload = JSON.parse(event.data);
           this.handleMessage(payload);
@@ -60,16 +92,21 @@ class WebSocketClient {
         }
       };
 
-      this.socket.onclose = () => {
+      ws.onclose = () => {
+        if (this.socket !== ws) return;
         this.stopHeartbeat();
         this.setStatus('DISCONNECTED');
-        if (!this.explicitDisconnect) {
-          this.scheduleReconnect();
-        }
+        this.socket = null;
+        this.scheduleReconnect();
       };
 
-      this.socket.onerror = () => {
-        this.socket?.close();
+      ws.onerror = () => {
+        if (this.socket !== ws) return;
+        try {
+          ws.close();
+        } catch {
+          // Ignore error on close
+        }
       };
     } catch {
       this.setStatus('DISCONNECTED');

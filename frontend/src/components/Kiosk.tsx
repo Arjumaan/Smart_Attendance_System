@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import confetti from 'canvas-confetti';
 import {
   Camera,
   CameraOff,
@@ -176,13 +178,35 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
           status: statusText,
         });
 
-        // Trigger Audio Chime
+        // Trigger Audio Chime & Confetti Delight
         if (eventRes === 'COOLDOWN_IGNORED') {
           playChime('info');
         } else if (isLate) {
           playChime('late');
+          try {
+            confetti({
+              particleCount: 30,
+              spread: 50,
+              origin: { y: 0.65 },
+              colors: ['#f59e0b', '#fbbf24', '#d97706'],
+              disableForReducedMotion: true,
+            });
+          } catch {
+            // Ignore
+          }
         } else {
           playChime('success');
+          try {
+            confetti({
+              particleCount: 45,
+              spread: 65,
+              origin: { y: 0.65 },
+              colors: ['#10b981', '#34d399', '#059669', '#38bdf8'],
+              disableForReducedMotion: true,
+            });
+          } catch {
+            // Ignore
+          }
         }
 
         // Trigger Visual Toast
@@ -328,10 +352,14 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
           {/* Target Alignment Center Reticle */}
           {isStreaming && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-64 h-72 sm:w-72 sm:h-80 border border-emerald-500/20 rounded-3xl relative flex items-center justify-center">
-                {/* Scanner Laser Bar when scanning */}
+              <div className="w-64 h-72 sm:w-72 sm:h-80 border border-emerald-500/20 rounded-3xl relative flex items-center justify-center overflow-hidden">
+                {/* Framer Motion Cyber Laser Scan Sweep */}
                 {autoScan && (
-                  <div className="absolute top-0 left-0 right-0 h-1 scanner-laser animate-scan" />
+                  <motion.div
+                    className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#34d399]"
+                    animate={{ top: ['4%', '96%', '4%'] }}
+                    transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}
+                  />
                 )}
 
                 {/* Corner reticle brackets */}
@@ -342,7 +370,7 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
 
                 {/* Guidance text overlay */}
                 <div className="absolute -bottom-10 text-center">
-                  <span className="text-xs font-mono tracking-wider text-slate-300 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-700/60 shadow-lg">
+                  <span className="text-xs font-mono tracking-wider text-slate-300 bg-slate-900/90 px-3.5 py-1 rounded-full border border-slate-700/80 shadow-xl backdrop-blur-md">
                     Align Face Within Reticle
                   </span>
                 </div>
@@ -350,28 +378,36 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
             </div>
           )}
 
-          {/* Dynamic Detection Bounding Box Card */}
-          {detectionBox && detectionBox.visible && (
-            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-30 transform animate-in fade-in zoom-in-95 duration-200">
-              <div className="bg-slate-900/95 backdrop-blur-md border-2 border-emerald-400 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center space-x-3.5">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center flex-shrink-0">
-                  <UserCheck className="w-6 h-6 text-emerald-400" />
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <h3 className="font-bold text-base text-white tracking-wide">{detectionBox.name}</h3>
-                    <span className="text-[11px] font-mono bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">
-                      {(detectionBox.similarity * 100).toFixed(0)}% MATCH
-                    </span>
+          {/* Dynamic Detection Bounding Box Card with Spring Animation */}
+          <AnimatePresence>
+            {detectionBox && detectionBox.visible && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85, y: -25 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: -15 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                className="absolute top-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none"
+              >
+                <div className="bg-slate-900/95 backdrop-blur-xl border-2 border-emerald-400 text-white px-5 py-3.5 rounded-2xl shadow-2xl shadow-emerald-950/60 flex items-center space-x-3.5">
+                  <div className="w-11 h-11 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center flex-shrink-0 shadow-inner">
+                    <UserCheck className="w-6 h-6 text-emerald-400" />
                   </div>
-                  <p className="text-xs font-medium text-emerald-300 flex items-center gap-1.5 mt-0.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    {detectionBox.status}
-                  </p>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-bold text-base text-white tracking-wide">{detectionBox.name}</h3>
+                      <span className="text-[11px] font-mono bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">
+                        {(detectionBox.similarity * 100).toFixed(0)}% MATCH
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium text-emerald-300 flex items-center gap-1.5 mt-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      {detectionBox.status}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Offline / Disabled Camera Overlay */}
           {!isStreaming && (
@@ -444,75 +480,82 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
               </p>
             </div>
           ) : (
-            localEvents.map((evt, index) => {
-              const isCheckedIn = evt.event_result === 'CHECKED_IN';
-              const isCheckedOut = evt.event_result === 'CHECKED_OUT';
+            <AnimatePresence initial={false}>
+              {localEvents.map((evt, index) => {
+                const isCheckedIn = evt.event_result === 'CHECKED_IN';
+                const isCheckedOut = evt.event_result === 'CHECKED_OUT';
 
-              return (
-                <div
-                  key={`${evt.employee_id}-${index}-${evt.check_in_time || evt.check_out_time}`}
-                  className="p-3 rounded-xl bg-slate-850/80 border border-slate-800 hover:border-slate-700 transition-all flex items-start space-x-3"
-                >
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-xs ${
-                      isCheckedIn
-                        ? evt.is_late
-                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                          : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                        : isCheckedOut
-                        ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                        : 'bg-slate-800 text-slate-400 border border-slate-700'
-                    }`}
+                return (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, x: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ type: 'spring', stiffness: 450, damping: 28 }}
+                    key={`${evt.employee_id}-${index}-${evt.check_in_time || evt.check_out_time}`}
+                    className="p-3 rounded-xl bg-slate-850/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-800/80 transition-all flex items-start space-x-3 shadow-sm"
                   >
-                    {evt.full_name
-                      ? evt.full_name
-                          .split(' ')
-                          .map((n) => n[0])
-                          .join('')
-                          .slice(0, 2)
-                          .toUpperCase()
-                      : 'ID'}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-semibold text-slate-100 truncate">{evt.full_name}</h4>
-                      <span className="text-[10px] font-mono text-slate-400 ml-2">
-                        {evt.check_out_time
-                          ? new Date(evt.check_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : evt.check_in_time
-                          ? new Date(evt.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : 'Now'}
-                      </span>
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-xs ${
+                        isCheckedIn
+                          ? evt.is_late
+                            ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                            : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : isCheckedOut
+                          ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}
+                    >
+                      {evt.full_name
+                        ? evt.full_name
+                            .split(' ')
+                            .map((n) => n[0])
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase()
+                        : 'ID'}
                     </div>
 
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5 truncate">{evt.employee_id}</p>
-
-                    <div className="flex items-center space-x-2 mt-2">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
-                          isCheckedIn
-                            ? evt.is_late
-                              ? 'bg-amber-950/70 text-amber-400 border border-amber-800/60'
-                              : 'bg-emerald-950/70 text-emerald-400 border border-emerald-800/60'
-                            : isCheckedOut
-                            ? 'bg-cyan-950/70 text-cyan-400 border border-cyan-800/60'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700'
-                        }`}
-                      >
-                        {isCheckedIn ? (evt.is_late ? 'Late Check-In' : 'Checked In') : isCheckedOut ? 'Checked Out' : 'Cooldown'}
-                      </span>
-
-                      {evt.total_hours && evt.total_hours > 0 && (
-                        <span className="text-[10px] text-cyan-300 font-mono">
-                          {evt.total_hours.toFixed(1)} hrs
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold text-slate-100 truncate">{evt.full_name}</h4>
+                        <span className="text-[10px] font-mono text-slate-400 ml-2">
+                          {evt.check_out_time
+                            ? new Date(evt.check_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : evt.check_in_time
+                            ? new Date(evt.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : 'Now'}
                         </span>
-                      )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-400 font-mono mt-0.5 truncate">{evt.employee_id}</p>
+
+                      <div className="flex items-center space-x-2 mt-2">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                            isCheckedIn
+                              ? evt.is_late
+                                ? 'bg-amber-950/70 text-amber-400 border border-amber-800/60'
+                                : 'bg-emerald-950/70 text-emerald-400 border border-emerald-800/60'
+                              : isCheckedOut
+                              ? 'bg-cyan-950/70 text-cyan-400 border border-cyan-800/60'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          }`}
+                        >
+                          {isCheckedIn ? (evt.is_late ? 'Late Check-In' : 'Checked In') : isCheckedOut ? 'Checked Out' : 'Cooldown'}
+                        </span>
+
+                        {evt.total_hours && evt.total_hours > 0 && (
+                          <span className="text-[10px] text-cyan-300 font-mono">
+                            {evt.total_hours.toFixed(1)} hrs
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
           )}
         </div>
       </div>

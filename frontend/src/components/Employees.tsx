@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
   UserPlus,
@@ -12,6 +13,9 @@ import {
   AlertCircle,
   Scan,
   RefreshCw,
+  Eye,
+  EyeOff,
+  Check,
 } from 'lucide-react';
 import api from '../services/api';
 import { Department, User, UserCreate } from '../types';
@@ -45,6 +49,7 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
     is_active: true,
   });
   const [submittingAdd, setSubmittingAdd] = useState<boolean>(false);
+  const [showAddPassword, setShowAddPassword] = useState<boolean>(false);
 
   // Face Enrollment Camera State
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -93,6 +98,59 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
           type: 'warning',
           title: 'Validation Error',
           message: 'Please fill in all required fields.',
+        });
+      }
+      return;
+    }
+
+    // Password policy validation
+    const pwd = addForm.password;
+    if (pwd.length < 8) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Password Too Short',
+          message: 'Password must be at least 8 characters long.',
+        });
+      }
+      return;
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Uppercase Required',
+          message: 'Password must contain at least one uppercase letter (A-Z).',
+        });
+      }
+      return;
+    }
+    if (!/[a-z]/.test(pwd)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Lowercase Required',
+          message: 'Password must contain at least one lowercase letter (a-z).',
+        });
+      }
+      return;
+    }
+    if (!/\d/.test(pwd)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Number Required',
+          message: 'Password must contain at least one number (0-9).',
+        });
+      }
+      return;
+    }
+    if (!/[^A-Za-z0-9]/.test(pwd)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Special Character Required',
+          message: 'Password must contain at least one special character (!@#$%^&*...).',
         });
       }
       return;
@@ -465,21 +523,33 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
         </div>
       </div>
 
-      {/* Modal: Add Employee */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+      {/* Modal: Add Employee with Framer Motion */}
+      <AnimatePresence>
+        {showAddModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative"
             >
-              <X className="w-5 h-5" />
-            </button>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            <div className="flex items-center space-x-2 mb-4">
-              <UserPlus className="w-5 h-5 text-emerald-400" />
-              <h2 className="text-base font-bold text-white">Register Corporate Employee</h2>
-            </div>
+              <div className="flex items-center space-x-2 mb-4">
+                <UserPlus className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-base font-bold text-white">Register Corporate Employee</h2>
+              </div>
 
             <form onSubmit={handleAddEmployeeSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -523,14 +593,51 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Password *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={addForm.password}
-                    onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                    className="w-full bg-slate-850 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showAddPassword ? 'text' : 'password'}
+                      required
+                      placeholder="••••••••••••"
+                      value={addForm.password}
+                      onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                      className="w-full bg-slate-850 border border-slate-700 rounded-xl pl-3 pr-10 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAddPassword(!showAddPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
+                      title={showAddPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showAddPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Password Requirement Live Pills */}
+              <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-[10px] space-y-1.5">
+                <div className="text-slate-400 font-medium">Enterprise Password Policy:</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  <div className={`flex items-center space-x-1.5 ${addForm.password.length >= 8 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <Check className={`w-3 h-3 ${addForm.password.length >= 8 ? 'text-emerald-400' : 'text-slate-600'}`} />
+                    <span>8+ characters</span>
+                  </div>
+                  <div className={`flex items-center space-x-1.5 ${/[A-Z]/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <Check className={`w-3 h-3 ${/[A-Z]/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                    <span>1 uppercase (A-Z)</span>
+                  </div>
+                  <div className={`flex items-center space-x-1.5 ${/[a-z]/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <Check className={`w-3 h-3 ${/[a-z]/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                    <span>1 lowercase (a-z)</span>
+                  </div>
+                  <div className={`flex items-center space-x-1.5 ${/\d/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <Check className={`w-3 h-3 ${/\d/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                    <span>1 digit (0-9)</span>
+                  </div>
+                  <div className={`flex items-center space-x-1.5 ${/[^A-Za-z0-9]/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <Check className={`w-3 h-3 ${/[^A-Za-z0-9]/.test(addForm.password) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                    <span>1 special symbol</span>
+                  </div>
                 </div>
               </div>
 
@@ -594,95 +701,116 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
-      {/* Modal: Live Biometric Face Enrollment */}
-      {showEnrollModal && selectedUserForEnroll && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative flex flex-col items-center">
-            <button
-              onClick={closeEnrollModal}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+      {/* Modal: Live Biometric Face Enrollment with Framer Motion */}
+      <AnimatePresence>
+        {showEnrollModal && selectedUserForEnroll && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative flex flex-col items-center"
             >
-              <X className="w-5 h-5" />
-            </button>
+              <button
+                onClick={closeEnrollModal}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            <div className="flex items-center space-x-2 mb-2">
-              <Scan className="w-5 h-5 text-emerald-400" />
-              <h2 className="text-base font-bold text-white">Enroll Facial Biometrics</h2>
-            </div>
-            <p className="text-xs text-slate-400 text-center mb-4">
-              Enrolling <strong className="text-emerald-400">{selectedUserForEnroll.full_name}</strong> ({selectedUserForEnroll.employee_id})
-            </p>
+              <div className="flex items-center space-x-2 mb-2">
+                <Scan className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-base font-bold text-white">Enroll Facial Biometrics</h2>
+              </div>
+              <p className="text-xs text-slate-400 text-center mb-4">
+                Enrolling <strong className="text-emerald-400">{selectedUserForEnroll.full_name}</strong> ({selectedUserForEnroll.employee_id})
+              </p>
 
-            {/* Webcam / Snapshot Viewport */}
-            <div className="w-72 h-72 sm:w-80 sm:h-80 bg-black rounded-3xl overflow-hidden relative border-2 border-emerald-500/50 flex items-center justify-center shadow-inner">
-              {!capturedSnapshot ? (
-                <>
-                  <video
-                    ref={enrollVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
+              {/* Webcam / Snapshot Viewport */}
+              <div className="w-72 h-72 sm:w-80 sm:h-80 bg-black rounded-3xl overflow-hidden relative border-2 border-emerald-500/50 flex items-center justify-center shadow-inner">
+                {!capturedSnapshot ? (
+                  <>
+                    <video
+                      ref={enrollVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                    {/* Portrait Oval Guide */}
+                    <div className="absolute inset-4 border-2 border-dashed border-emerald-400/60 rounded-full pointer-events-none flex items-center justify-center">
+                      <span className="text-[10px] font-mono text-emerald-300 bg-slate-950/80 px-2.5 py-0.5 rounded-full border border-emerald-800">
+                        Center Face in Oval
+                      </span>
+                    </div>
+
+                    {/* Animated Scanning Beam */}
+                    <motion.div
+                      className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399]"
+                      animate={{ top: ['5%', '95%', '5%'] }}
+                      transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
+                    />
+                  </>
+                ) : (
+                  <img
+                    src={capturedSnapshot}
+                    alt="Captured Portrait"
                     className="w-full h-full object-cover transform -scale-x-100"
                   />
-                  {/* Portrait Oval Guide */}
-                  <div className="absolute inset-4 border-2 border-dashed border-emerald-400/60 rounded-full pointer-events-none flex items-center justify-center">
-                    <span className="text-[10px] font-mono text-emerald-300 bg-slate-950/80 px-2.5 py-0.5 rounded-full border border-emerald-800">
-                      Center Face in Oval
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <img
-                  src={capturedSnapshot}
-                  alt="Captured Portrait"
-                  className="w-full h-full object-cover transform -scale-x-100"
-                />
-              )}
-            </div>
+                )}
+              </div>
 
-            {/* Modal Controls */}
-            <div className="mt-5 flex items-center space-x-3">
-              {!capturedSnapshot ? (
-                <button
-                  onClick={takeSnapshot}
-                  className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs uppercase tracking-wider shadow-lg shadow-emerald-950/50 transition-all"
-                >
-                  <Camera className="w-4 h-4" />
-                  <span>Capture Snapshot</span>
-                </button>
-              ) : (
-                <>
+              {/* Modal Controls */}
+              <div className="mt-5 flex items-center space-x-3">
+                {!capturedSnapshot ? (
                   <button
-                    onClick={retakeSnapshot}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors border border-slate-700"
+                    onClick={takeSnapshot}
+                    className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs uppercase tracking-wider shadow-lg shadow-emerald-950/50 transition-all"
                   >
-                    Retake Photo
+                    <Camera className="w-4 h-4" />
+                    <span>Capture Snapshot</span>
                   </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={retakeSnapshot}
+                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors border border-slate-700"
+                    >
+                      Retake Photo
+                    </button>
 
-                  <button
-                    onClick={submitBiometricEnrollment}
-                    disabled={enrollingFace}
-                    className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs uppercase tracking-wider shadow-lg shadow-emerald-950/50 transition-all"
-                  >
-                    <Shield className="w-4 h-4" />
-                    <span>{enrollingFace ? 'Encrypting & Saving...' : 'Submit Biometrics'}</span>
-                  </button>
-                </>
-              )}
-            </div>
+                    <button
+                      onClick={submitBiometricEnrollment}
+                      disabled={enrollingFace}
+                      className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs uppercase tracking-wider shadow-lg shadow-emerald-950/50 transition-all"
+                    >
+                      <Shield className="w-4 h-4" />
+                      <span>{enrollingFace ? 'Encrypting & Saving...' : 'Submit Biometrics'}</span>
+                    </button>
+                  </>
+                )}
+              </div>
 
-            <div className="mt-4 text-center">
-              <span className="text-[10px] text-slate-500 font-mono">
-                Encrypted at rest using AES-256-GCM. 512-d unit vector cache updated.
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="mt-4 text-center">
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Encrypted at rest using AES-256-GCM. 512-d unit vector cache updated.
+                </span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import {
   Users,
   CheckCircle,
@@ -97,10 +98,16 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Stat Cards Grid */}
+      {/* KPI Stat Cards Grid with Framer Motion */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Employees */}
-        <div className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-slate-700 transition-all">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05 }}
+          whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-slate-700 hover:shadow-slate-900/50 transition-all cursor-default"
+        >
           <div className="flex items-center justify-between text-slate-400 mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider">Total Enrolled</span>
             <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-slate-300">
@@ -115,10 +122,16 @@ export const Dashboard: React.FC = () => {
             <ShieldCheck className="w-3.5 h-3.5 mr-1" />
             <span>Biometric Enrolled</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Present Today */}
-        <div className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-emerald-800/50 transition-all">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-emerald-800/60 hover:shadow-emerald-950/30 transition-all cursor-default"
+        >
           <div className="flex items-center justify-between text-slate-400 mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider">Present Today</span>
             <div className="w-8 h-8 rounded-xl bg-emerald-950/60 border border-emerald-800/50 flex items-center justify-center text-emerald-400">
@@ -133,10 +146,16 @@ export const Dashboard: React.FC = () => {
             <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
             <span>{summary && summary.total_employees > 0 ? ((summary.present_count / summary.total_employees) * 100).toFixed(0) : 0}% of Total</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Late Arrivals */}
-        <div className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-amber-800/50 transition-all">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.15 }}
+          whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-amber-800/60 hover:shadow-amber-950/30 transition-all cursor-default"
+        >
           <div className="flex items-center justify-between text-slate-400 mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider">Late Arrivals</span>
             <div className="w-8 h-8 rounded-xl bg-amber-950/60 border border-amber-800/50 flex items-center justify-center text-amber-400">
@@ -150,10 +169,16 @@ export const Dashboard: React.FC = () => {
           <div className="mt-3 flex items-center text-[11px] text-amber-400">
             <span>After 09:15 AM Cutoff</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Absent */}
-        <div className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-rose-800/50 transition-all">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+          whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-rose-800/60 hover:shadow-rose-950/30 transition-all cursor-default"
+        >
           <div className="flex items-center justify-between text-slate-400 mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider">Absent</span>
             <div className="w-8 h-8 rounded-xl bg-rose-950/60 border border-rose-800/50 flex items-center justify-center text-rose-400">
@@ -167,10 +192,16 @@ export const Dashboard: React.FC = () => {
           <div className="mt-3 flex items-center text-[11px] text-rose-400">
             <span>No Presence Detected</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Attendance Rate */}
-        <div className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-cyan-800/50 transition-all">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.25 }}
+          whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          className="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl relative overflow-hidden group hover:border-cyan-800/60 hover:shadow-cyan-950/30 transition-all cursor-default"
+        >
           <div className="flex items-center justify-between text-slate-400 mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider">Attendance Rate</span>
             <div className="w-8 h-8 rounded-xl bg-cyan-950/60 border border-cyan-800/50 flex items-center justify-center text-cyan-400">
@@ -181,12 +212,14 @@ export const Dashboard: React.FC = () => {
             <span className="text-3xl font-bold text-cyan-400 font-mono">{summary?.attendance_rate ?? 0}%</span>
           </div>
           <div className="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div
-              className="bg-cyan-400 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, summary?.attendance_rate ?? 0)}%` }}
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(100, summary?.attendance_rate ?? 0)}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+              className="bg-gradient-to-r from-cyan-500 to-teal-400 h-full rounded-full"
             />
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Middle Grid: Department Breakdown & Trend Line */}

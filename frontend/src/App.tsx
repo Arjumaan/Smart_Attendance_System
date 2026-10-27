@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Shield, LogIn } from 'lucide-react';
 import Navbar from './components/Navbar';
 import Kiosk from './components/Kiosk';
 import Dashboard from './components/Dashboard';
@@ -58,7 +60,13 @@ export const App: React.FC = () => {
         }
       }
 
-      // Auto-authenticate as default Administrator so dashboard and directory are instantly ready
+      // Check if user explicitly logged out in this session
+      const hasLoggedOut = sessionStorage.getItem('sat_logged_out');
+      if (hasLoggedOut === 'true') {
+        return; // Do not auto-login if user explicitly logged out
+      }
+
+      // Auto-authenticate as default Administrator on clean launch
       try {
         await api.login({ email: 'admin@company.com', password: 'Password123!' });
         const user = await api.getMe();
@@ -106,7 +114,9 @@ export const App: React.FC = () => {
 
   const handleLogout = () => {
     api.logout();
+    sessionStorage.setItem('sat_logged_out', 'true');
     setCurrentUser(null);
+    setActiveTab('kiosk');
     addToast({
       type: 'info',
       title: 'Signed Out',
@@ -115,6 +125,7 @@ export const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (user: User) => {
+    sessionStorage.removeItem('sat_logged_out');
     setCurrentUser(user);
     addToast({
       type: 'success',
@@ -122,6 +133,35 @@ export const App: React.FC = () => {
       message: `Signed in as ${user.full_name} (${user.role})`,
     });
   };
+
+  const renderAuthGate = (featureName: string) => (
+    <div className="max-w-md mx-auto my-16 p-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl text-center space-y-5 animate-fade-in">
+      <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+        <Shield className="w-7 h-7" />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-lg font-bold text-white tracking-tight">Corporate Authentication Required</h3>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Access to the <span className="text-emerald-400 font-medium">{featureName}</span> console requires authenticated Administrator or HR permissions.
+        </p>
+      </div>
+      <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+        <button
+          onClick={() => setShowLoginModal(true)}
+          className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center space-x-2 transition-all"
+        >
+          <LogIn className="w-4 h-4" />
+          <span>Sign In to Console</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('kiosk')}
+          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 font-medium text-xs rounded-xl transition-all"
+        >
+          Return to Live Kiosk
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-brand-500 selection:text-white">
@@ -147,18 +187,28 @@ export const App: React.FC = () => {
 
       {/* Main Tab Views */}
       <main className="flex-1 w-full pb-12">
-        {activeTab === 'kiosk' && (
-          <Kiosk onNotify={addToast} recentEvents={recentEvents} />
-        )}
-        {activeTab === 'dashboard' && (
-          <Dashboard key={currentUser?.id || 'guest'} />
-        )}
-        {activeTab === 'employees' && (
-          <Employees key={currentUser?.id || 'guest'} onNotify={addToast} />
-        )}
-        {activeTab === 'reports' && (
-          <Reports key={currentUser?.id || 'guest'} onNotify={addToast} />
-        )}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {activeTab === 'kiosk' && (
+              <Kiosk onNotify={addToast} recentEvents={recentEvents} />
+            )}
+            {activeTab === 'dashboard' && (
+              currentUser ? <Dashboard key={currentUser.id} /> : renderAuthGate('Dashboard Analytics')
+            )}
+            {activeTab === 'employees' && (
+              currentUser ? <Employees key={currentUser.id} onNotify={addToast} /> : renderAuthGate('Employee Directory')
+            )}
+            {activeTab === 'reports' && (
+              currentUser ? <Reports key={currentUser.id} onNotify={addToast} /> : renderAuthGate('Attendance Reports')
+            )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Enterprise Footer */}

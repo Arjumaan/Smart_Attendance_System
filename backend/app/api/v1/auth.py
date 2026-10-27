@@ -1,6 +1,7 @@
 """Authentication endpoints: Login and Me."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.app.api.deps import get_current_user, get_db
@@ -15,7 +16,8 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/token", response_model=Token)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate with corporate email and password, returning JWT access token."""
-    user = db.query(User).filter(User.email == credentials.email.strip()).first()
+    email_clean = credentials.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email_clean).first()
     if not user or not verify_password(credentials.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

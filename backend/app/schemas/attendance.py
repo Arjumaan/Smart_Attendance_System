@@ -46,7 +46,7 @@ class AttendanceLogOut(BaseModel):
     full_name: Optional[str] = None
     department_name: Optional[str] = None
     date: date
-    check_in_time: datetime
+    check_in_time: Optional[datetime] = None
     check_out_time: Optional[datetime] = None
     total_hours: Optional[float] = None
     status: str
@@ -106,7 +106,7 @@ class CheckInStatusResponse(BaseModel):
 class ManualAttendanceCreate(BaseModel):
     employee_id: str
     date: date
-    check_in_time: datetime
+    check_in_time: Optional[datetime] = None
     check_out_time: Optional[datetime] = None
     status: Optional[str] = None
     is_late: Optional[bool] = None
