@@ -103,14 +103,14 @@ def test_detection_after_cooldown_registers_checkout(
     assert log.total_hours == 8.5
 
 
-def test_subsequent_checkout_updates_duration(
+def test_subsequent_scan_after_checkout_is_ignored_and_locks_checkout(
     db_session: Session, seed_department_and_users: dict
 ):
-    """Verify multiple checkouts on same day update checkout timestamp and recalculate duration."""
+    """Verify once employee checks out for the day, subsequent detections do not overwrite duration."""
     user: User = seed_department_and_users["users"][UserRole.EMPLOYEE]
     t_in = datetime(2026, 10, 26, 9, 0, 0)
     t_out_1 = datetime(2026, 10, 26, 17, 0, 0)   # 8.0 hours
-    t_out_2 = datetime(2026, 10, 26, 18, 30, 0)  # 9.5 hours
+    t_out_2 = datetime(2026, 10, 26, 18, 30, 0)  # subsequent scan 1.5 hours later
 
     record_attendance_event(db=db_session, employee_id=user.employee_id, timestamp=t_in)
     res_1 = record_attendance_event(db=db_session, employee_id=user.employee_id, timestamp=t_out_1)
@@ -118,16 +118,18 @@ def test_subsequent_checkout_updates_duration(
     assert res_1.total_hours == 8.0
 
     res_2 = record_attendance_event(db=db_session, employee_id=user.employee_id, timestamp=t_out_2)
-    assert res_2.event_result == AttendanceEventResultEnum.CHECKED_OUT
-    assert res_2.total_hours == 9.5
+    assert res_2.event_result == AttendanceEventResultEnum.COOLDOWN_IGNORED
+    assert "Already Checked Out" in res_2.message
+    assert res_2.check_out_time == t_out_1
+    assert res_2.total_hours == 8.0
 
     log = (
         db_session.query(AttendanceLog)
         .filter(AttendanceLog.user_id == user.id, AttendanceLog.date == t_in.date())
         .first()
     )
-    assert log.check_out_time == t_out_2
-    assert log.total_hours == 9.5
+    assert log.check_out_time == t_out_1
+    assert log.total_hours == 8.0
 
 
 def test_late_arrival_flagging_after_shift_cutoff(

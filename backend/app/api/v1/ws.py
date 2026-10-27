@@ -48,6 +48,14 @@ class WebSocketManager:
         }
         await self.broadcast_json(payload)
 
+    async def broadcast_leave_event(self, leave_data: Dict[str, Any]):
+        """Broadcast leave/permission request or review event to connected clients."""
+        payload = {
+            "type": "LEAVE_EVENT",
+            "data": leave_data,
+        }
+        await self.broadcast_json(payload)
+
 
 # Global singleton instance
 ws_manager = WebSocketManager()

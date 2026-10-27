@@ -12,14 +12,20 @@ import {
   Activity,
   ArrowUpRight,
   ShieldCheck,
+  FileText,
 } from 'lucide-react';
 import api from '../services/api';
 import { AttendanceLog, DailySummary } from '../types';
 
-export const Dashboard: React.FC = () => {
+export interface DashboardProps {
+  onNavigateTab?: (tab: 'leaves') => void;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigateTab }) => {
   const [targetDate, setTargetDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [recentLogs, setRecentLogs] = useState<AttendanceLog[]>([]);
+  const [pendingLeaves, setPendingLeaves] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,12 +33,15 @@ export const Dashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [sumData, logsData] = await Promise.all([
+      const [sumData, logsData, countData] = await Promise.all([
         api.getDailySummary(targetDate),
         api.getAttendanceLogs({ start_date: targetDate, end_date: targetDate, limit: 20 }),
+        api.getPendingLeaveCount().catch(() => ({ total_actionable: 0, pending_count: 0, enquiry_count: 0 })),
       ]);
       setSummary(sumData);
       setRecentLogs(logsData);
+      const actionable = countData?.total_actionable ?? countData?.pending_count ?? 0;
+      setPendingLeaves(actionable);
     } catch (err: unknown) {
       console.error('Failed to load dashboard data:', err);
       setError('Unable to load dashboard analytics from the attendance service.');
@@ -96,6 +105,38 @@ export const Dashboard: React.FC = () => {
           <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {/* Actionable Leave Requests Notification Banner */}
+      {pendingLeaves > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 shadow-lg shadow-amber-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+        >
+          <div className="flex items-center space-x-3 text-amber-300">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+              <FileText className="w-4 h-4 animate-pulse" />
+            </div>
+            <div>
+              <p className="font-bold tracking-tight text-white">
+                {pendingLeaves} Actionable Leave / Permission Request{pendingLeaves === 1 ? '' : 's'}
+              </p>
+              <p className="text-[11px] text-amber-200/80">
+                Staff members have submitted time-off requests or enquiry clarifications requiring Management review.
+              </p>
+            </div>
+          </div>
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('leaves')}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs rounded-xl shadow-md transition-all shrink-0 flex items-center space-x-1"
+            >
+              <span>Review Requests</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </motion.div>
       )}
 
       {/* KPI Stat Cards Grid with Framer Motion */}

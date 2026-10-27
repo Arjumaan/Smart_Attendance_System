@@ -19,28 +19,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      setError('Please enter both corporate email and password.');
-      return;
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.');
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      setError('Password must contain at least one uppercase letter (A-Z).');
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      setError('Password must contain at least one lowercase letter (a-z).');
-      return;
-    }
-    if (!/\d/.test(password)) {
-      setError('Password must contain at least one number (0-9).');
-      return;
-    }
-    if (!/[^A-Za-z0-9]/.test(password)) {
-      setError('Password must contain at least one special character (!@#$%^&*...).');
+      setError('Please enter both corporate email or employee ID and password.');
       return;
     }
 
@@ -97,8 +76,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
                 </div>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white tracking-tight">Enterprise Console Login</h3>
-                <p className="text-xs text-slate-400">Authenticate with corporate credentials</p>
+                <h3 className="text-lg font-bold text-white tracking-tight">Management Console Sign In</h3>
+                <p className="text-xs text-slate-400">Authenticate with Administrator or HR corporate credentials</p>
               </div>
             </div>
 
@@ -123,17 +102,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
               className="space-y-4"
             >
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Corporate Email</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Corporate Email or Employee ID
+                </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
-                    type="email"
+                    type="text"
                     value={email}
                     onChange={(ev) => {
                       setEmail(ev.target.value);
                       if (error) setError(null);
                     }}
-                    placeholder="e.g. admin@company.com"
+                    placeholder="e.g. admin@company.com or EMP001"
                     className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-950 border border-slate-700/80 rounded-xl text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                   />
                 </div>
@@ -172,9 +153,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
                 className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center space-x-2 transition-all disabled:opacity-50 mt-6"
               >
                 <LogIn className="w-4 h-4" />
-                <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
+                <span>{loading ? 'Authenticating...' : 'Sign In to Console'}</span>
               </motion.button>
             </form>
+
+            <div className="pt-3 text-center border-t border-slate-800/80">
+              <p className="text-xs text-slate-400">
+                Are you an employee?{' '}
+                <a
+                  href="/emp_login"
+                  className="text-emerald-400 hover:text-emerald-300 font-semibold hover:underline"
+                >
+                  Go to Employee Portal Login (/emp_login) →
+                </a>
+              </p>
+            </div>
           </motion.div>
         </motion.div>
       )}

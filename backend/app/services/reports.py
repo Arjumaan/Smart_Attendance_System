@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from backend.app.models.attendance import AttendanceLog
 from backend.app.models.department import Department
+from backend.app.models.leave import LeaveRequest
 from backend.app.models.user import User
 
 
@@ -411,8 +412,8 @@ def generate_report(
                 AttendanceLog.status == "PRESENT",
                 AttendanceLog.is_late.is_(False),
             )
-        elif stat_upper == "ABSENT":
-            # For absentees, generate synthetic attendance records for unlogged active employees
+        elif stat_upper in ("ABSENT", "ON_LEAVE"):
+            # For absentees and employees on leave, generate synthetic attendance records for unlogged active employees
             target_date = end_date or start_date or date.today()
             active_q = (
                 db.query(User)
@@ -438,7 +439,23 @@ def generate_report(
                 .all()
             }
 
-            absent_users = [u for u in active_q.all() if u.id not in logged_uids]
+            approved_leaves = (
+                db.query(LeaveRequest)
+                .filter(
+                    LeaveRequest.status == "APPROVED",
+                    LeaveRequest.start_date <= target_date,
+                    LeaveRequest.end_date >= target_date,
+                )
+                .all()
+            )
+            leave_map = {l.user_id: l for l in approved_leaves}
+
+            unlogged_users = [u for u in active_q.all() if u.id not in logged_uids]
+            if stat_upper == "ON_LEAVE":
+                target_users = [u for u in unlogged_users if u.id in leave_map]
+            else:
+                target_users = [u for u in unlogged_users if u.id not in leave_map]
+
             now_dt = datetime.now()
             records = [
                 AttendanceLog(
@@ -449,14 +466,18 @@ def generate_report(
                     check_in_time=None,
                     check_out_time=None,
                     total_hours=0.0,
-                    status="ABSENT",
+                    status="ON_LEAVE" if u.id in leave_map else "ABSENT",
                     is_late=False,
                     source="SYSTEM",
-                    notes="No presence recorded.",
+                    notes=(
+                        f"Approved Leave: {leave_map[u.id].leave_type}"
+                        if u.id in leave_map
+                        else "No presence recorded."
+                    ),
                     created_at=now_dt,
                     updated_at=now_dt,
                 )
-                for u in absent_users
+                for u in target_users
             ]
         else:
             query = query.filter(AttendanceLog.status == stat_upper)

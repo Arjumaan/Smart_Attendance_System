@@ -142,6 +142,7 @@ def get_employee(
 
 
 @router.put("/{user_id}", response_model=UserOut)
+@router.patch("/{user_id}", response_model=UserOut)
 def update_employee(
     user_id: str,
     user_in: UserUpdate,

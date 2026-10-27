@@ -1,14 +1,16 @@
-import { AttendanceResult } from '../types';
+import { AttendanceResult, LeaveEventPayload } from '../types';
 
 export type ConnectionStatus = 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED';
 
 type AttendanceCallback = (data: AttendanceResult) => void;
+type LeaveEventCallback = (data: LeaveEventPayload) => void;
 type StatusCallback = (status: ConnectionStatus) => void;
 
 class WebSocketClient {
   private socket: WebSocket | null = null;
   private status: ConnectionStatus = 'DISCONNECTED';
   private attendanceListeners: Set<AttendanceCallback> = new Set();
+  private leaveListeners: Set<LeaveEventCallback> = new Set();
   private statusListeners: Set<StatusCallback> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectDelay = 10000;
@@ -139,6 +141,13 @@ class WebSocketClient {
     };
   }
 
+  public onLeaveEvent(callback: LeaveEventCallback): () => void {
+    this.leaveListeners.add(callback);
+    return () => {
+      this.leaveListeners.delete(callback);
+    };
+  }
+
   public onStatusChange(callback: StatusCallback): () => void {
     this.statusListeners.add(callback);
     callback(this.status);
@@ -162,6 +171,15 @@ class WebSocketClient {
           callback(attendanceData);
         } catch (err) {
           console.error('Error invoking attendance listener:', err);
+        }
+      });
+    } else if (payload.type === 'LEAVE_EVENT' && payload.data) {
+      const leaveData = payload.data as LeaveEventPayload;
+      this.leaveListeners.forEach((callback) => {
+        try {
+          callback(leaveData);
+        } catch (err) {
+          console.error('Error invoking leave listener:', err);
         }
       });
     }

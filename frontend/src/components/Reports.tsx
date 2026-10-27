@@ -410,6 +410,7 @@ export const Reports: React.FC<ReportsProps> = ({ onNotify }) => {
                 <option value="PRESENT" className="bg-slate-900">PRESENT (On-Time)</option>
                 <option value="LATE" className="bg-slate-900">LATE</option>
                 <option value="ABSENT" className="bg-slate-900">ABSENT</option>
+                <option value="ON_LEAVE" className="bg-slate-900">ON LEAVE (Approved)</option>
               </select>
             </div>
           </div>
@@ -628,12 +629,20 @@ export const Reports: React.FC<ReportsProps> = ({ onNotify }) => {
                         className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           log.status === 'ABSENT'
                             ? 'bg-rose-950/80 text-rose-300 border border-rose-800/70'
+                            : log.status === 'ON_LEAVE'
+                            ? 'bg-sky-950/80 text-sky-300 border border-sky-800/70'
                             : log.is_late || log.status === 'LATE'
                             ? 'bg-amber-950/80 text-amber-300 border border-amber-800/70'
                             : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/70'
                         }`}
                       >
-                        {log.status === 'ABSENT' ? 'Absent' : log.is_late || log.status === 'LATE' ? 'Late' : 'On-Time'}
+                        {log.status === 'ABSENT'
+                          ? 'Absent'
+                          : log.status === 'ON_LEAVE'
+                          ? 'On Leave'
+                          : log.is_late || log.status === 'LATE'
+                          ? 'Late'
+                          : 'On-Time'}
                       </span>
                     </td>
                   </tr>

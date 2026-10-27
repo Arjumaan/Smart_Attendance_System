@@ -10,7 +10,11 @@ import {
   Department,
   DepartmentCreate,
   FaceEmbeddingOut,
+  LeaveActionPayload,
+  LeaveCreatePayload,
+  LeaveRequest,
   ManualAttendanceCreate,
+  PersonalAttendanceSummary,
   ReportFilterParams,
   Token,
   User,
@@ -36,9 +40,21 @@ class ApiClient {
     // Request interceptor to automatically add Authorization token
     this.client.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('sat_token') || localStorage.getItem('access_token');
-        if (token && config.headers) {
-          config.headers.Authorization = `Bearer ${token}`;
+        // Is this an employee-portal specific page/request?
+        const isEmployeeContext =
+          typeof window !== 'undefined' &&
+          (window.location.pathname.startsWith('/employee') ||
+            window.location.pathname.startsWith('/emp_login'));
+
+        const empToken = localStorage.getItem('sat_employee_token');
+        const adminToken = localStorage.getItem('sat_token') || localStorage.getItem('access_token');
+
+        const activeToken = isEmployeeContext
+          ? empToken || adminToken
+          : adminToken || empToken;
+
+        if (activeToken && config.headers) {
+          config.headers.Authorization = `Bearer ${activeToken}`;
         }
         return config;
       },
@@ -58,12 +74,17 @@ class ApiClient {
   }
 
   // --- Auth Endpoints ---
-  async login(credentials: UserLogin): Promise<Token> {
+  async login(credentials: UserLogin, isEmployeePortal: boolean = false): Promise<Token> {
     const response: AxiosResponse<Token> = await this.client.post('/auth/login', credentials);
     if (response.data.access_token) {
-      localStorage.setItem('sat_token', response.data.access_token);
-      localStorage.setItem('access_token', response.data.access_token);
-      localStorage.setItem('sat_user', JSON.stringify(response.data));
+      if (isEmployeePortal || response.data.role === 'EMPLOYEE') {
+        localStorage.setItem('sat_employee_token', response.data.access_token);
+        localStorage.setItem('sat_employee_user', JSON.stringify(response.data));
+      } else {
+        localStorage.setItem('sat_token', response.data.access_token);
+        localStorage.setItem('access_token', response.data.access_token);
+        localStorage.setItem('sat_user', JSON.stringify(response.data));
+      }
     }
     return response.data;
   }
@@ -79,8 +100,33 @@ class ApiClient {
     localStorage.removeItem('sat_user');
   }
 
+  logoutEmployee(): void {
+    localStorage.removeItem('sat_employee_token');
+    localStorage.removeItem('sat_employee_user');
+  }
+
   getToken(): string | null {
+    const isEmployeeContext =
+      typeof window !== 'undefined' &&
+      (window.location.pathname.startsWith('/employee') ||
+        window.location.pathname.startsWith('/emp_login'));
+
+    if (isEmployeeContext) {
+      return localStorage.getItem('sat_employee_token') || localStorage.getItem('sat_token');
+    }
     return localStorage.getItem('sat_token') || localStorage.getItem('access_token');
+  }
+
+  getEmployeeToken(): string | null {
+    return localStorage.getItem('sat_employee_token');
+  }
+
+  setEmployeeToken(token: string | null): void {
+    if (token) {
+      localStorage.setItem('sat_employee_token', token);
+    } else {
+      localStorage.removeItem('sat_employee_token');
+    }
   }
 
   setToken(token: string | null): void {
@@ -249,6 +295,89 @@ class ApiClient {
     link.click();
     link.remove();
     window.URL.revokeObjectURL(url);
+  }
+
+  // --- Employee Self-Service & Personal Attendance ---
+  async getMyAttendance(params?: {
+    employee_id?: string;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ total: number; logs: AttendanceLog[] }> {
+    const response = await this.client.get('/attendance/my-attendance', { params });
+    const raw = response.data;
+    const items: AttendanceLog[] = Array.isArray(raw) ? raw : (raw?.logs || []);
+    const totalCount: number = Array.isArray(raw) ? raw.length : (raw?.total ?? items.length);
+    return {
+      total: totalCount,
+      logs: items,
+    };
+  }
+
+  async getMyAttendanceSummary(params?: { employee_id?: string }): Promise<PersonalAttendanceSummary> {
+    const response: AxiosResponse<PersonalAttendanceSummary> = await this.client.get('/attendance/my-summary', { params });
+    return response.data;
+  }
+
+  // --- Leaves & Permissions Endpoints ---
+  async submitLeaveRequest(data: LeaveCreatePayload): Promise<LeaveRequest> {
+    const response: AxiosResponse<LeaveRequest> = await this.client.post('/leaves/', data);
+    return response.data;
+  }
+
+  async getMyLeaveRequests(params?: { employee_id?: string }): Promise<LeaveRequest[]> {
+    const response: AxiosResponse<LeaveRequest[]> = await this.client.get('/leaves/my-requests', { params });
+    return response.data;
+  }
+
+  async replyLeaveEnquiry(requestId: number, reply: string): Promise<LeaveRequest> {
+    const response: AxiosResponse<LeaveRequest> = await this.client.put(
+      `/leaves/my-requests/${requestId}/reply`,
+      { reply }
+    );
+    return response.data;
+  }
+
+  async cancelLeaveRequest(requestId: number): Promise<LeaveRequest> {
+    const response: AxiosResponse<LeaveRequest> = await this.client.post(
+      `/leaves/my-requests/${requestId}/cancel`
+    );
+    return response.data;
+  }
+
+  async getAllLeaveRequests(params?: {
+    status?: string;
+    request_type?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ total: number; requests: LeaveRequest[] }> {
+    const response = await this.client.get('/leaves/', { params });
+    const raw = response.data;
+    const items: LeaveRequest[] = Array.isArray(raw) ? raw : (raw?.requests || []);
+    const totalCount: number = Array.isArray(raw) ? raw.length : (raw?.total ?? items.length);
+    return {
+      total: totalCount,
+      requests: items,
+    };
+  }
+
+  async getPendingLeaveCount(): Promise<{ pending_count: number; enquiry_count: number; total_actionable: number }> {
+    const response = await this.client.get('/leaves/pending-count');
+    const data = response.data || {};
+    const pending = typeof data.pending_count === 'number' ? data.pending_count : 0;
+    const enquiry = typeof data.enquiry_count === 'number' ? data.enquiry_count : 0;
+    const total = typeof data.total_actionable === 'number' ? data.total_actionable : (pending + enquiry);
+    return {
+      pending_count: pending,
+      enquiry_count: enquiry,
+      total_actionable: total,
+    };
+  }
+
+  async reviewLeaveRequest(requestId: number, data: LeaveActionPayload): Promise<LeaveRequest> {
+    const response: AxiosResponse<LeaveRequest> = await this.client.post(`/leaves/${requestId}/action`, data);
+    return response.data;
   }
 }
 

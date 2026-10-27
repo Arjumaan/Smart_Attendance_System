@@ -124,22 +124,34 @@ def record_attendance_event(
             full_name=user.full_name,
         )
 
-    # Existing daily record found -> check cooldown vs reference time
-    reference_time = (
-        existing_log.check_out_time
-        if existing_log.check_out_time is not None
-        else existing_log.check_in_time
-    )
+    # Existing daily record found -> check if employee already checked out for today
+    if existing_log.check_out_time is not None:
+        # Employee already completed their checkout for the day. Lock the checkout time
+        # to prevent subsequent kiosk camera passes from overwriting duration.
+        out_time_str = existing_log.check_out_time.strftime("%H:%M:%S")
+        hours_str = (
+            f"{existing_log.total_hours:.2f}"
+            if existing_log.total_hours is not None
+            else "0.00"
+        )
+        return AttendanceResult(
+            event_result=AttendanceEventResultEnum.COOLDOWN_IGNORED,
+            message=f"Already Checked Out today at {out_time_str} ({hours_str} hrs). Checkout locked.",
+            status=existing_log.status,
+            is_late=existing_log.is_late,
+            check_in_time=existing_log.check_in_time,
+            check_out_time=existing_log.check_out_time,
+            total_hours=existing_log.total_hours,
+            duration_hours=existing_log.total_hours,
+            employee_id=user.employee_id,
+            full_name=user.full_name,
+        )
 
-    delta_seconds = (timestamp - reference_time).total_seconds()
-
-    # Also ensure difference from check_in_time is respected
+    # Not yet checked out -> check cooldown against check_in_time
     delta_from_check_in = (timestamp - existing_log.check_in_time).total_seconds()
 
-    if 0 <= delta_seconds < cooldown_seconds or (
-        existing_log.check_out_time is None and 0 <= delta_from_check_in < cooldown_seconds
-    ):
-        # Within cooldown window -> COOLDOWN_IGNORED
+    if 0 <= delta_from_check_in < cooldown_seconds:
+        # Within cooldown window from check-in -> COOLDOWN_IGNORED
         return AttendanceResult(
             event_result=AttendanceEventResultEnum.COOLDOWN_IGNORED,
             message=f"Detection within {effective_cooldown}-minute cooldown window ignored.",
@@ -153,7 +165,7 @@ def record_attendance_event(
             full_name=user.full_name,
         )
 
-    # Outside cooldown window -> CHECK-OUT (or update check-out)
+    # Outside cooldown window -> Record CHECK-OUT
     existing_log.check_out_time = timestamp
     duration_seconds = (timestamp - existing_log.check_in_time).total_seconds()
     calculated_hours = round(max(0.0, duration_seconds / 3600.0), 2)

@@ -86,7 +86,7 @@ class UserOut(UserBase):
 
 
 class UserLogin(BaseModel):
-    email: str
+    email: str = Field(..., description="Corporate email or Employee ID")
     password: str
 
 

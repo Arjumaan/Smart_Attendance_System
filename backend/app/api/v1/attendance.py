@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from backend.app.api.deps import (
@@ -12,8 +12,9 @@ from backend.app.api.deps import (
     get_optional_current_user,
     require_hr_or_admin,
 )
-from backend.app.core.security import CurrentUser
+from backend.app.core.security import CurrentUser, UserRole
 from backend.app.models.attendance import AttendanceLog
+from backend.app.models.leave import LeaveRequest
 from backend.app.models.user import User
 from backend.app.schemas.attendance import (
     AttendanceEventRequest,
@@ -115,8 +116,8 @@ def get_attendance_logs(
                 AttendanceLog.status == "PRESENT",
                 AttendanceLog.is_late.is_(False),
             )
-        elif stat_upper == "ABSENT":
-            # For absentees, return active employees who have no record in the specified date range (or today)
+        elif stat_upper in ("ABSENT", "ON_LEAVE"):
+            # For absentees and employees on leave, compute from unlogged active users
             target_date = end_date or start_date or date.today()
             active_q = (
                 db.query(User)
@@ -142,7 +143,24 @@ def get_attendance_logs(
                 .all()
             }
 
-            absent_users = [u for u in active_q.all() if u.id not in logged_uids]
+            # Query approved leaves covering target_date
+            approved_leaves = (
+                db.query(LeaveRequest)
+                .filter(
+                    LeaveRequest.status == "APPROVED",
+                    LeaveRequest.start_date <= target_date,
+                    LeaveRequest.end_date >= target_date,
+                )
+                .all()
+            )
+            leave_map = {l.user_id: l for l in approved_leaves}
+
+            unlogged_users = [u for u in active_q.all() if u.id not in logged_uids]
+            if stat_upper == "ON_LEAVE":
+                target_users = [u for u in unlogged_users if u.id in leave_map]
+            else:
+                target_users = [u for u in unlogged_users if u.id not in leave_map]
+
             now_dt = datetime.now()
             return [
                 AttendanceLogOut(
@@ -155,14 +173,18 @@ def get_attendance_logs(
                     check_in_time=None,
                     check_out_time=None,
                     total_hours=0.0,
-                    status="ABSENT",
+                    status="ON_LEAVE" if u.id in leave_map else "ABSENT",
                     is_late=False,
                     source="SYSTEM",
-                    notes="No biometric check-in recorded for this date.",
+                    notes=(
+                        f"Approved Leave: {leave_map[u.id].leave_type} ({leave_map[u.id].reason})"
+                        if u.id in leave_map
+                        else "No biometric check-in recorded for this date."
+                    ),
                     created_at=now_dt,
                     updated_at=now_dt,
                 )
-                for u in absent_users[offset_val : offset_val + limit_val]
+                for u in target_users[offset_val : offset_val + limit_val]
             ]
         else:
             query = query.filter(AttendanceLog.status == stat_upper)
@@ -247,6 +269,244 @@ def get_today_presence_feed(
 
     events.sort(key=_get_sort_time, reverse=True)
     return events[:limit_val]
+
+
+@router.get("/my-attendance", response_model=List[AttendanceLogOut])
+def get_my_attendance_logs(
+    employee_id: Optional[str] = Query(None, description="Target employee ID"),
+    start_date: Optional[date] = Query(None, description="Start date for log query"),
+    end_date: Optional[date] = Query(None, description="End date for log query"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Retrieve personal attendance records for the authenticated employee only.
+    
+    Includes biometric attendance logs AND synthesized ON_LEAVE records for all dates
+    covered by approved leave applications.
+    """
+    if employee_id and employee_id.strip():
+        req_id = employee_id.strip()
+        if (
+            current_user.role == UserRole.EMPLOYEE.value
+            and current_user.employee_id.lower() != req_id.lower()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Cannot query another employee's records.",
+            )
+        user = (
+            db.query(User)
+            .options(joinedload(User.department))
+            .filter(func.lower(User.employee_id) == req_id.lower())
+            .first()
+        )
+        if not user:
+            return []
+    else:
+        user = (
+            db.query(User)
+            .options(joinedload(User.department))
+            .filter(User.id == current_user.id)
+            .first()
+        )
+        if not user:
+            return []
+
+    dept_name = user.department.name if user.department else "Unassigned"
+
+    # 1. Query physical attendance logs
+    query = (
+        db.query(AttendanceLog)
+        .join(User, AttendanceLog.user_id == User.id)
+        .options(joinedload(AttendanceLog.user).joinedload(User.department))
+        .filter(AttendanceLog.user_id == user.id)
+    )
+
+    if isinstance(start_date, date):
+        query = query.filter(AttendanceLog.date >= start_date)
+    if isinstance(end_date, date):
+        query = query.filter(AttendanceLog.date <= end_date)
+
+    physical_logs = query.all()
+    logged_dates = {log.date: log for log in physical_logs}
+
+    # 2. Query approved leave requests covering the period
+    leave_query = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.user_id == user.id,
+            LeaveRequest.status == "APPROVED",
+        )
+    )
+    if isinstance(start_date, date):
+        leave_query = leave_query.filter(LeaveRequest.end_date >= start_date)
+    if isinstance(end_date, date):
+        leave_query = leave_query.filter(LeaveRequest.start_date <= end_date)
+
+    approved_leaves = leave_query.all()
+
+    # 3. Synthesize ON_LEAVE logs for all approved leave dates without a physical log
+    from datetime import timedelta
+    synthetic_records: List[AttendanceLogOut] = []
+
+    for leave in approved_leaves:
+        curr = leave.start_date
+        end_bound = leave.end_date or leave.start_date
+        while curr <= end_bound:
+            # Check date range filter boundaries
+            in_range = True
+            if isinstance(start_date, date) and curr < start_date:
+                in_range = False
+            if isinstance(end_date, date) and curr > end_date:
+                in_range = False
+
+            if in_range:
+                if curr not in logged_dates:
+                    desc = (
+                        f"Approved {leave.leave_type} Leave: {leave.reason}"
+                        if leave.request_type == "LEAVE"
+                        else f"Approved Permission ({leave.start_time or ''}-{leave.end_time or ''}): {leave.reason}"
+                    )
+                    synthetic_records.append(
+                        AttendanceLogOut(
+                            id=-int(f"{leave.id}{curr.strftime('%m%d')}"),
+                            user_id=user.id,
+                            employee_id=user.employee_id,
+                            full_name=user.full_name,
+                            department_name=dept_name,
+                            date=curr,
+                            check_in_time=None,
+                            check_out_time=None,
+                            total_hours=0.0,
+                            status="ON_LEAVE",
+                            is_late=False,
+                            source="LEAVE_APPROVAL",
+                            notes=desc,
+                            created_at=leave.created_at,
+                            updated_at=leave.updated_at,
+                        )
+                    )
+                else:
+                    # If physical check-in exists on that day, add note about approved leave
+                    existing_log = logged_dates[curr]
+                    if not existing_log.notes:
+                        existing_log.notes = f"Approved {leave.leave_type} Leave"
+
+            curr += timedelta(days=1)
+
+    all_records = [_format_log_out(r) for r in physical_logs] + synthetic_records
+    all_records.sort(key=lambda r: (r.date, r.check_in_time or datetime.min), reverse=True)
+
+    return all_records[offset : offset + limit]
+
+
+@router.get("/my-summary")
+def get_my_attendance_summary(
+    employee_id: Optional[str] = Query(None, description="Target employee ID"),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Retrieve personal monthly KPIs and presence overview for the authenticated employee."""
+    if employee_id and employee_id.strip():
+        req_id = employee_id.strip()
+        if (
+            current_user.role == UserRole.EMPLOYEE.value
+            and current_user.employee_id.lower() != req_id.lower()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Cannot query another employee's summary.",
+            )
+        user = (
+            db.query(User)
+            .options(joinedload(User.department))
+            .filter(func.lower(User.employee_id) == req_id.lower())
+            .first()
+        )
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee profile not found.")
+    else:
+        user = (
+            db.query(User)
+            .options(joinedload(User.department))
+            .filter(User.id == current_user.id)
+            .first()
+        )
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found.")
+
+    today = date.today()
+    logs = (
+        db.query(AttendanceLog)
+        .filter(AttendanceLog.user_id == user.id)
+        .order_by(AttendanceLog.date.desc())
+        .all()
+    )
+
+    total_records = len(logs)
+    late_count = sum(1 for l in logs if l.is_late or l.status == "LATE")
+    on_time_count = total_records - late_count
+    total_hours = sum(l.total_hours or 0.0 for l in logs)
+    avg_hours = round(total_hours / total_records, 2) if total_records > 0 else 0.0
+    attendance_rate = round((on_time_count / total_records * 100.0), 1) if total_records > 0 else 100.0
+
+    # Today's personal log
+    today_log = next((l for l in logs if l.date == today), None)
+    today_status = "NOT_CHECKED_IN"
+    if today_log:
+        if today_log.check_out_time:
+            today_status = "CHECKED_OUT"
+        else:
+            today_status = "CHECKED_IN"
+    else:
+        # Check if user has an approved leave today
+        approved_leave = (
+            db.query(LeaveRequest)
+            .filter(
+                LeaveRequest.user_id == user.id,
+                LeaveRequest.status == "APPROVED",
+                LeaveRequest.start_date <= today,
+                LeaveRequest.end_date >= today,
+            )
+            .first()
+        )
+        if approved_leave:
+            today_status = "ON_LEAVE"
+
+    # Pending / Actionable leave requests count for this user
+    pending_leaves = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.user_id == user.id,
+            LeaveRequest.status.in_(["PENDING", "ENQUIRY_REQUESTED"]),
+        )
+        .count()
+    )
+
+    return {
+        "employee_id": user.employee_id,
+        "full_name": user.full_name,
+        "department": user.department.name if user.department else None,
+        "shift_start": user.shift_start,
+        "total_days_logged": total_records,
+        "total_days": total_records,
+        "present_days": total_records,
+        "on_time_count": on_time_count,
+        "late_count": late_count,
+        "late_days": late_count,
+        "absent_days": 0,
+        "total_hours_worked": round(total_hours, 2),
+        "total_hours": round(total_hours, 2),
+        "avg_hours": avg_hours,
+        "on_time_rate": attendance_rate,
+        "attendance_rate": attendance_rate,
+        "today_status": today_status,
+        "today_check_in": today_log.check_in_time.strftime("%H:%M:%S") if today_log and today_log.check_in_time else None,
+        "today_check_out": today_log.check_out_time.strftime("%H:%M:%S") if today_log and today_log.check_out_time else None,
+        "pending_leaves_count": pending_leaves,
+    }
 
 
 @router.get("/summary", response_model=DailySummaryResponse)

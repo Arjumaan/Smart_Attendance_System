@@ -16,6 +16,8 @@ import {
   Eye,
   EyeOff,
   Check,
+  KeyRound,
+  Lock,
 } from 'lucide-react';
 import api from '../services/api';
 import { Department, User, UserCreate } from '../types';
@@ -50,6 +52,13 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
   });
   const [submittingAdd, setSubmittingAdd] = useState<boolean>(false);
   const [showAddPassword, setShowAddPassword] = useState<boolean>(false);
+
+  // Password Reset / Change State
+  const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [selectedUserForPassword, setSelectedUserForPassword] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
+  const [submittingPassword, setSubmittingPassword] = useState<boolean>(false);
 
   // Face Enrollment Camera State
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -343,6 +352,103 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
     }
   };
 
+  const openPasswordModal = (user: User) => {
+    setSelectedUserForPassword(user);
+    setNewPassword('');
+    setShowNewPassword(false);
+    setShowPasswordModal(true);
+  };
+
+  const closePasswordModal = () => {
+    setShowPasswordModal(false);
+    setSelectedUserForPassword(null);
+    setNewPassword('');
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserForPassword) return;
+
+    if (newPassword.length < 8) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Password Too Short',
+          message: 'Password must be at least 8 characters long.',
+        });
+      }
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Uppercase Required',
+          message: 'Password must contain at least one uppercase letter (A-Z).',
+        });
+      }
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Lowercase Required',
+          message: 'Password must contain at least one lowercase letter (a-z).',
+        });
+      }
+      return;
+    }
+    if (!/\d/.test(newPassword)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Number Required',
+          message: 'Password must contain at least one number (0-9).',
+        });
+      }
+      return;
+    }
+    if (!/[^A-Za-z0-9]/.test(newPassword)) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Special Character Required',
+          message: 'Password must contain at least one special character (!@#$%^&*...).',
+        });
+      }
+      return;
+    }
+
+    setSubmittingPassword(true);
+    try {
+      await api.updateEmployee(selectedUserForPassword.id, { password: newPassword });
+      playChime('success');
+      if (onNotify) {
+        onNotify({
+          type: 'success',
+          title: 'Password Updated',
+          message: `Password updated for ${selectedUserForPassword.full_name} (${selectedUserForPassword.employee_id}). Employee can now sign in at /emp_login.`,
+        });
+      }
+      closePasswordModal();
+    } catch (err: unknown) {
+      const errMsg =
+        (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
+        'Failed to update employee password.';
+      playChime('error');
+      if (onNotify) {
+        onNotify({
+          type: 'error',
+          title: 'Update Failed',
+          message: errMsg,
+        });
+      }
+    } finally {
+      setSubmittingPassword(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Directory Header Bar */}
@@ -498,6 +604,15 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                     <td className="py-4 px-5 text-right">
                       <div className="flex items-center justify-end space-x-2">
                         <button
+                          onClick={() => openPasswordModal(emp)}
+                          className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-amber-950/60 text-slate-300 hover:text-amber-400 border border-slate-700 hover:border-amber-700/80 transition-colors"
+                          title="Set or Reset Login Password"
+                        >
+                          <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Password</span>
+                        </button>
+
+                        <button
                           onClick={() => openEnrollModal(emp)}
                           className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-emerald-950 text-slate-300 hover:text-emerald-400 border border-slate-700 hover:border-emerald-700 transition-colors"
                           title="Enroll Facial Biometrics"
@@ -611,6 +726,10 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                       {showAddPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
+                  <p className="text-[10px] text-emerald-400/90 font-medium mt-1 flex items-center space-x-1">
+                    <KeyRound className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>The employee will use this exact password to sign into the Employee Portal at /emp_login.</span>
+                  </p>
                 </div>
               </div>
 
@@ -807,6 +926,123 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                   Encrypted at rest using AES-256-GCM. 512-d unit vector cache updated.
                 </span>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Set / Reset Employee Password */}
+      <AnimatePresence>
+        {showPasswordModal && selectedUserForPassword && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-950/80 border border-amber-800/80 flex items-center justify-center text-amber-400">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Set Login Password</h3>
+                    <p className="text-xs text-slate-400">
+                      {selectedUserForPassword.full_name} ({selectedUserForPassword.employee_id})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={closePasswordModal}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+                <span className="text-slate-400">Account: </span>
+                <span className="font-semibold text-slate-200">{selectedUserForPassword.email}</span>
+                <p className="text-[11px] text-amber-400/90 mt-1">
+                  The employee will use this password to sign into the Employee Portal at /emp_login.
+                </p>
+              </div>
+
+              <form onSubmit={handleUpdatePassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    New Password *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      placeholder="Enter new strong password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Password Policy Live Pills */}
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[10px] space-y-1.5">
+                  <div className="text-slate-400 font-medium">Enterprise Complexity Check:</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className={`flex items-center space-x-1.5 ${newPassword.length >= 8 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <Check className={`w-3 h-3 ${newPassword.length >= 8 ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      <span>8+ characters</span>
+                    </div>
+                    <div className={`flex items-center space-x-1.5 ${/[A-Z]/.test(newPassword) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <Check className={`w-3 h-3 ${/[A-Z]/.test(newPassword) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      <span>1 uppercase (A-Z)</span>
+                    </div>
+                    <div className={`flex items-center space-x-1.5 ${/[a-z]/.test(newPassword) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <Check className={`w-3 h-3 ${/[a-z]/.test(newPassword) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      <span>1 lowercase (a-z)</span>
+                    </div>
+                    <div className={`flex items-center space-x-1.5 ${/\d/.test(newPassword) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <Check className={`w-3 h-3 ${/\d/.test(newPassword) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      <span>1 number (0-9)</span>
+                    </div>
+                    <div className={`flex items-center space-x-1.5 col-span-2 ${/[^A-Za-z0-9]/.test(newPassword) ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <Check className={`w-3 h-3 ${/[^A-Za-z0-9]/.test(newPassword) ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      <span>1 special symbol (!@#$%^&*...)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closePasswordModal}
+                    className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingPassword}
+                    className="px-4 py-2 text-xs font-bold rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-950/40 flex items-center space-x-1.5 transition-all disabled:opacity-50"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>{submittingPassword ? 'Saving Password...' : 'Save Password'}</span>
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </motion.div>
         )}

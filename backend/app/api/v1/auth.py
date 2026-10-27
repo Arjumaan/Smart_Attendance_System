@@ -15,13 +15,20 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/login", response_model=Token)
 @router.post("/token", response_model=Token)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    """Authenticate with corporate email and password, returning JWT access token."""
-    email_clean = credentials.email.strip().lower()
-    user = db.query(User).filter(func.lower(User.email) == email_clean).first()
+    """Authenticate with corporate email or employee ID and password, returning JWT access token."""
+    identifier_clean = credentials.email.strip().lower()
+    user = (
+        db.query(User)
+        .filter(
+            (func.lower(User.email) == identifier_clean)
+            | (func.lower(User.employee_id) == identifier_clean)
+        )
+        .first()
+    )
     if not user or not verify_password(credentials.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
+            detail="Invalid email / employee ID or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

@@ -190,13 +190,91 @@ export interface ReportFilterParams {
   status?: string;
 }
 
+export type ToastNotificationType = 'success' | 'error' | 'warning' | 'info';
+
 export interface ToastNotification {
   id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
+  type: ToastNotificationType;
   title: string;
   message: string;
   duration?: number;
   timestamp: Date;
 }
 
-export type TabType = 'kiosk' | 'dashboard' | 'employees' | 'reports';
+export type TabType = 'kiosk' | 'dashboard' | 'employees' | 'reports' | 'leaves' | 'my-portal';
+
+// --- Leave & Permission Types ---
+export type LeaveRequestType = 'LEAVE' | 'PERMISSION';
+export type LeaveType = 'CASUAL' | 'SICK' | 'ANNUAL' | 'EMERGENCY' | 'PERMISSION';
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ENQUIRY_REQUESTED' | 'CANCELLED';
+
+export interface LeaveRequest {
+  id: number;
+  user_id: number;
+  request_type: LeaveRequestType;
+  leave_type: LeaveType;
+  start_date: string;
+  end_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  duration_hours?: number | null;
+  reason: string;
+  status: LeaveStatus;
+  reviewer_id?: number | null;
+  admin_notes?: string | null;
+  employee_reply?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  employee_name?: string | null;
+  employee_code?: string | null;
+  full_name?: string | null;
+  employee_id?: string | null;
+  department_name?: string | null;
+  reviewer_name?: string | null;
+}
+
+export interface LeaveCreatePayload {
+  request_type: LeaveRequestType;
+  leave_type: LeaveType;
+  start_date: string;
+  end_date?: string;
+  start_time?: string;
+  end_time?: string;
+  duration_hours?: number;
+  reason: string;
+}
+
+export interface LeaveActionPayload {
+  action: 'APPROVE' | 'REJECT' | 'ENQUIRE';
+  admin_notes?: string;
+}
+
+export interface LeaveEnquiryReplyPayload {
+  reply: string;
+}
+
+export interface PersonalAttendanceSummary {
+  employee_id: string;
+  full_name: string;
+  department?: string | null;
+  shift_start: string;
+  total_days_logged: number;
+  total_days?: number;
+  present_days: number;
+  late_days: number;
+  absent_days: number;
+  total_hours_worked: number;
+  total_hours?: number;
+  on_time_rate: number;
+  attendance_rate?: number;
+  today_status: string;
+  today_check_in?: string | null;
+  today_check_out?: string | null;
+  pending_leaves_count: number;
+}
+
+export interface LeaveEventPayload {
+  action: string;
+  leave: LeaveRequest;
+}
