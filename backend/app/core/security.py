@@ -157,6 +157,31 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> Optional[CurrentUser]:
+    """Dependency to retrieve user from token if provided, returning None if unauthenticated."""
+    if not auth or not auth.credentials:
+        return None
+    try:
+        payload = decode_access_token(auth.credentials)
+        sub = payload.get("sub")
+        role = payload.get("role")
+        if sub is None or role is None:
+            return None
+        return CurrentUser(
+            id=int(sub) if str(sub).isdigit() else 1,
+            employee_id=str(payload.get("employee_id", f"EMP-{sub}")),
+            email=str(payload.get("email", f"user-{sub}@enterprise.local")),
+            full_name=str(payload.get("full_name", f"User {sub}")),
+            role=str(role),
+            is_active=bool(payload.get("is_active", True)),
+            department_id=payload.get("department_id"),
+        )
+    except Exception:
+        return None
+
+
 def require_roles(*allowed_roles: Union[UserRole, str]) -> Callable[..., CurrentUser]:
     """Factory dependency to enforce Role-Based Access Control (RBAC).
 

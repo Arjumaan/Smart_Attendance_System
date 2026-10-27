@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import Employees from './components/Employees';
 import Reports from './components/Reports';
 import Toast, { playChime } from './components/Toast';
+import LoginModal from './components/LoginModal';
 import wsClient, { ConnectionStatus } from './services/websocket';
 import api from './services/api';
 import { AttendanceResult, TabType, ToastNotification, User } from './types';
@@ -15,6 +16,7 @@ export const App: React.FC = () => {
   const [recentEvents, setRecentEvents] = useState<AttendanceResult[]>([]);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>('DISCONNECTED');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
 
   // Add toast helper
   const addToast = useCallback(
@@ -42,14 +44,31 @@ export const App: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Fetch current authenticated user if token present
+  // Fetch current authenticated user, or auto-login with seeded admin credentials
   useEffect(() => {
-    const token = api.getToken();
-    if (token) {
-      api.getMe()
-        .then((user: User) => setCurrentUser(user))
-        .catch(() => api.logout());
-    }
+    const initAuth = async () => {
+      const token = api.getToken();
+      if (token) {
+        try {
+          const user = await api.getMe();
+          setCurrentUser(user);
+          return;
+        } catch {
+          api.logout();
+        }
+      }
+
+      // Auto-authenticate as default Administrator so dashboard and directory are instantly ready
+      try {
+        await api.login({ email: 'admin@company.com', password: 'Password123!' });
+        const user = await api.getMe();
+        setCurrentUser(user);
+      } catch (err) {
+        console.warn('Auto-login notice (server might be starting up):', err);
+      }
+    };
+
+    initAuth();
   }, []);
 
   // WebSocket Connection and Event Handling
@@ -95,6 +114,15 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user);
+    addToast({
+      type: 'success',
+      title: 'Welcome Back',
+      message: `Signed in as ${user.full_name} (${user.role})`,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-brand-500 selection:text-white">
       {/* Top Enterprise Navigation */}
@@ -104,19 +132,33 @@ export const App: React.FC = () => {
         wsStatus={wsStatus}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onLoginClick={() => setShowLoginModal(true)}
       />
 
       {/* Floating Notifications */}
       <Toast toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Sign-In Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={handleLoginSuccess}
+      />
 
       {/* Main Tab Views */}
       <main className="flex-1 w-full pb-12">
         {activeTab === 'kiosk' && (
           <Kiosk onNotify={addToast} recentEvents={recentEvents} />
         )}
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'employees' && <Employees onNotify={addToast} />}
-        {activeTab === 'reports' && <Reports onNotify={addToast} />}
+        {activeTab === 'dashboard' && (
+          <Dashboard key={currentUser?.id || 'guest'} />
+        )}
+        {activeTab === 'employees' && (
+          <Employees key={currentUser?.id || 'guest'} onNotify={addToast} />
+        )}
+        {activeTab === 'reports' && (
+          <Reports key={currentUser?.id || 'guest'} onNotify={addToast} />
+        )}
       </main>
 
       {/* Enterprise Footer */}

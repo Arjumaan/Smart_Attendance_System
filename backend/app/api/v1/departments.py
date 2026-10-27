@@ -1,10 +1,16 @@
 """Departments API endpoints."""
 
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.deps import get_current_user, get_db, require_admin, require_hr_or_admin
+from backend.app.api.deps import (
+    get_current_user,
+    get_db,
+    get_optional_current_user,
+    require_admin,
+    require_hr_or_admin,
+)
 from backend.app.core.security import CurrentUser
 from backend.app.models.department import Department
 from backend.app.schemas.user import DepartmentCreate, DepartmentOut
@@ -15,7 +21,7 @@ router = APIRouter(prefix="/departments", tags=["Departments"])
 @router.get("/", response_model=List[DepartmentOut])
 def list_departments(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: Optional[CurrentUser] = Depends(get_optional_current_user),
 ):
     """List all corporate departments."""
     return db.query(Department).order_by(Department.name.asc()).all()

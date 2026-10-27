@@ -1,10 +1,16 @@
 """API dependencies for database access, authentication, and RBAC authorization."""
 
-from typing import Callable, Generator
+from typing import Callable, Generator, Optional
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.app.core.security import CurrentUser, UserRole, get_current_user, require_roles
+from backend.app.core.security import (
+    CurrentUser,
+    UserRole,
+    get_current_user,
+    get_optional_current_user,
+    require_roles,
+)
 from backend.app.db.session import get_db
 
 # Role authorization convenience dependencies
@@ -30,6 +36,7 @@ def get_current_active_user(
 __all__ = [
     "get_db",
     "get_current_user",
+    "get_optional_current_user",
     "get_current_active_user",
     "require_roles",
     "require_admin",

@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   User as UserIcon,
   LogOut,
+  LogIn,
 } from 'lucide-react';
 import { TabType, User } from '../types';
 import { ConnectionStatus } from '../services/websocket';
@@ -20,6 +21,7 @@ export interface NavbarProps {
   currentUser?: User | null;
   user?: User | any | null;
   onLogout?: () => void;
+  onLoginClick?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -29,6 +31,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   user,
   onLogout,
+  onLoginClick,
 }) => {
   const activeUser = currentUser || user;
   const [time, setTime] = useState<string>(new Date().toLocaleTimeString());
@@ -154,10 +157,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="flex items-center space-x-1 text-xs text-slate-400 bg-slate-800/50 px-2.5 py-1.5 rounded-lg border border-slate-700/50">
-                <UserIcon className="w-3.5 h-3.5 text-slate-400" />
-                <span className="font-mono">Kiosk Mode</span>
-              </div>
+              <button
+                onClick={onLoginClick}
+                className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-600/50 px-3 py-1.5 rounded-lg transition-all shadow-md shadow-emerald-950/40"
+              >
+                <LogIn className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Sign In (Admin / HR)</span>
+              </button>
             )}
           </div>
         </div>

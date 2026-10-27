@@ -4,7 +4,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
-from backend.app.api.deps import get_current_user, get_db, require_admin, require_hr_or_admin
+from backend.app.api.deps import (
+    get_current_user,
+    get_db,
+    get_optional_current_user,
+    require_admin,
+    require_hr_or_admin,
+)
 from backend.app.core.security import CurrentUser, get_password_hash
 from backend.app.models.department import Department
 from backend.app.models.user import User
@@ -29,7 +35,7 @@ def list_employees(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: Optional[CurrentUser] = Depends(get_optional_current_user),
 ):
     """List corporate employees with optional filtering and pagination."""
     query = (

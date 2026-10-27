@@ -5,7 +5,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
-from backend.app.api.deps import get_current_user, get_db, require_hr_or_admin
+from backend.app.api.deps import (
+    get_current_user,
+    get_db,
+    get_optional_current_user,
+    require_hr_or_admin,
+)
 from backend.app.core.security import CurrentUser
 from backend.app.models.attendance import AttendanceLog
 from backend.app.models.user import User
@@ -67,7 +72,7 @@ def get_attendance_logs(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: Optional[CurrentUser] = Depends(get_optional_current_user),
 ):
     """Retrieve filtered attendance records with pagination."""
     query = (
@@ -103,7 +108,7 @@ def get_attendance_logs(
 def get_dashboard_summary(
     target_date: Optional[date] = Query(None, description="Target date (defaults to today)"),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: Optional[CurrentUser] = Depends(get_optional_current_user),
 ):
     """Compute enterprise daily attendance KPIs and department breakdown."""
     date_val = target_date or datetime.now().date()
@@ -115,7 +120,7 @@ def get_status_for_employee(
     employee_id: str,
     target_date: Optional[date] = Query(None, description="Date (defaults to today)"),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: Optional[CurrentUser] = Depends(get_optional_current_user),
 ):
     """Get real-time check-in and checkout status for a specific employee."""
     try:
