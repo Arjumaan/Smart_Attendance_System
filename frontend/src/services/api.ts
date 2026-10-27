@@ -198,6 +198,12 @@ class ApiClient {
     return response.data;
   }
 
+  async getTodayPresenceFeed(targetDate?: string): Promise<AttendanceResult[]> {
+    const params = targetDate ? { target_date: targetDate } : undefined;
+    const response: AxiosResponse<AttendanceResult[]> = await this.client.get('/attendance/live-feed', { params });
+    return response.data;
+  }
+
   async markManualAttendance(data: ManualAttendanceCreate): Promise<AttendanceLog> {
     const response: AxiosResponse<AttendanceLog> = await this.client.post('/attendance/mark', data);
     return response.data;

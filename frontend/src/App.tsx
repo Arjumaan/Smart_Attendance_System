@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, LogIn } from 'lucide-react';
 import Navbar from './components/Navbar';
@@ -79,6 +79,46 @@ export const App: React.FC = () => {
     initAuth();
   }, []);
 
+  // Safe local date formatting (YYYY-MM-DD)
+  const getLocalDateStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const currentDayRef = useRef<string>(getLocalDateStr());
+
+  // Load today's presence activity feed from backend (persisting across page reloads/server restarts)
+  const loadTodayPresenceFeed = useCallback(async () => {
+    try {
+      const todayStr = getLocalDateStr();
+      const events = await api.getTodayPresenceFeed(todayStr);
+      setRecentEvents(events);
+    } catch (err) {
+      console.warn('Could not load today presence feed:', err);
+    }
+  }, []);
+
+  // Fetch initial presence feed on load
+  useEffect(() => {
+    loadTodayPresenceFeed();
+  }, [loadTodayPresenceFeed]);
+
+  // Monitor midnight day roll-over: automatically clear & reset feed when the date changes
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const todayStr = getLocalDateStr();
+      if (todayStr !== currentDayRef.current) {
+        currentDayRef.current = todayStr;
+        loadTodayPresenceFeed(); // Automatically empties feed for the new day
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(timer);
+  }, [loadTodayPresenceFeed]);
+
   // WebSocket Connection and Event Handling
   useEffect(() => {
     wsClient.connect();
@@ -88,7 +128,17 @@ export const App: React.FC = () => {
     });
 
     const unsubAttendance = wsClient.onAttendanceEvent((event: AttendanceResult) => {
-      setRecentEvents((prev) => [event, ...prev].slice(0, 25));
+      setRecentEvents((prev) => {
+        // Prevent duplicate events
+        const exists = prev.some(
+          (p) =>
+            p.employee_id === event.employee_id &&
+            p.event_result === event.event_result &&
+            (p.check_out_time || p.check_in_time) === (event.check_out_time || event.check_in_time)
+        );
+        if (exists) return prev;
+        return [event, ...prev].slice(0, 50);
+      });
 
       if (event.event_result !== 'COOLDOWN_IGNORED') {
         if (event.is_late) {
@@ -196,7 +246,13 @@ export const App: React.FC = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
           >
             {activeTab === 'kiosk' && (
-              <Kiosk onNotify={addToast} recentEvents={recentEvents} />
+              <Kiosk
+                onNotify={addToast}
+                recentEvents={recentEvents}
+                onAttendanceRecorded={(att) =>
+                  setRecentEvents((prev) => [att, ...prev])
+                }
+              />
             )}
             {activeTab === 'dashboard' && (
               currentUser ? <Dashboard key={currentUser.id} /> : renderAuthGate('Dashboard Analytics')

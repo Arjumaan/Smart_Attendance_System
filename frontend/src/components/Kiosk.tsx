@@ -22,9 +22,10 @@ import { playChime } from './Toast';
 interface KioskProps {
   onNotify?: (toast: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }) => void;
   recentEvents?: AttendanceResult[];
+  onAttendanceRecorded?: (att: AttendanceResult) => void;
 }
 
-export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => {
+export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [], onAttendanceRecorded }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -44,12 +45,23 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
     status: string;
   } | null>(null);
 
-  // Sync external events
+  // Sync external events from props (persisting across view navigation and resetting on new days)
   useEffect(() => {
-    if (recentEvents && recentEvents.length > 0) {
-      setLocalEvents(recentEvents);
-    }
+    setLocalEvents(recentEvents);
   }, [recentEvents]);
+
+  // Fallback initial load if recentEvents was empty on initial mount
+  useEffect(() => {
+    if (recentEvents.length === 0) {
+      api.getTodayPresenceFeed()
+        .then((events) => {
+          if (events && events.length > 0) {
+            setLocalEvents(events);
+          }
+        })
+        .catch((err) => console.debug('Kiosk presence feed check:', err));
+    }
+  }, []);
 
   // Enumerate video devices
   const updateDeviceList = useCallback(async () => {
@@ -218,9 +230,12 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
           });
         }
 
-        // Add to local events feed if attendance present
+        // Add to local events feed and parent feed if attendance present
         if (att) {
-          setLocalEvents((prev) => [att, ...prev].slice(0, 20));
+          setLocalEvents((prev) => [att, ...prev].slice(0, 50));
+          if (onAttendanceRecorded) {
+            onAttendanceRecorded(att);
+          }
         }
 
         // Auto-clear detection bounding box overlay after 3.5 seconds
@@ -466,7 +481,7 @@ export const Kiosk: React.FC<KioskProps> = ({ onNotify, recentEvents = [] }) => 
             <h3 className="text-sm font-semibold text-slate-100">Live Presence Feed</h3>
           </div>
           <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
-            {localEvents.length} Recent
+            {localEvents.length} Today
           </span>
         </div>
 

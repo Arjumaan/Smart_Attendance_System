@@ -17,6 +17,7 @@ from backend.app.models.attendance import AttendanceLog
 from backend.app.models.user import User
 from backend.app.schemas.attendance import (
     AttendanceEventRequest,
+    AttendanceEventResultEnum,
     AttendanceLogOut,
     AttendanceResult,
     CheckInStatusResponse,
@@ -174,6 +175,78 @@ def get_attendance_logs(
     )
 
     return [_format_log_out(r) for r in records]
+
+
+@router.get("/live-feed", response_model=List[AttendanceResult])
+@router.get("/events/today", response_model=List[AttendanceResult])
+def get_today_presence_feed(
+    target_date: Optional[date] = Query(None, description="Date for presence feed (defaults to today)"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Retrieve chronological presence activity feed for the current day.
+    
+    Persists across server restarts and page refreshes; starts newly on each new calendar day.
+    """
+    today_val = target_date if isinstance(target_date, date) else date.today()
+    limit_val = limit if isinstance(limit, int) else 50
+
+    logs = (
+        db.query(AttendanceLog)
+        .join(User, AttendanceLog.user_id == User.id)
+        .options(joinedload(AttendanceLog.user))
+        .filter(AttendanceLog.date == today_val)
+        .all()
+    )
+
+    events: List[AttendanceResult] = []
+    for log in logs:
+        emp_id = log.user.employee_id if log.user else "N/A"
+        full_name = log.user.full_name if log.user else "Unknown Employee"
+
+        if log.check_out_time:
+            time_str = log.check_out_time.strftime("%H:%M:%S")
+            hours_str = f" ({log.total_hours:.1f} hrs)" if log.total_hours else ""
+            events.append(
+                AttendanceResult(
+                    event_result=AttendanceEventResultEnum.CHECKED_OUT,
+                    message=f"Checked Out at {time_str}{hours_str}",
+                    status=log.status,
+                    is_late=log.is_late,
+                    check_in_time=log.check_in_time,
+                    check_out_time=log.check_out_time,
+                    total_hours=log.total_hours,
+                    duration_hours=log.total_hours,
+                    employee_id=emp_id,
+                    full_name=full_name,
+                )
+            )
+
+        if log.check_in_time:
+            time_str = log.check_in_time.strftime("%H:%M:%S")
+            late_msg = " (Late)" if log.is_late else ""
+            events.append(
+                AttendanceResult(
+                    event_result=AttendanceEventResultEnum.CHECKED_IN,
+                    message=f"Checked In at {time_str}{late_msg}. Status: {log.status}",
+                    status=log.status,
+                    is_late=log.is_late,
+                    check_in_time=log.check_in_time,
+                    check_out_time=None,
+                    total_hours=None,
+                    duration_hours=None,
+                    employee_id=emp_id,
+                    full_name=full_name,
+                )
+            )
+
+    def _get_sort_time(e: AttendanceResult):
+        if e.event_result == AttendanceEventResultEnum.CHECKED_OUT:
+            return e.check_out_time or datetime.min
+        return e.check_in_time or datetime.min
+
+    events.sort(key=_get_sort_time, reverse=True)
+    return events[:limit_val]
 
 
 @router.get("/summary", response_model=DailySummaryResponse)
