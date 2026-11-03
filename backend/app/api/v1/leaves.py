@@ -1,10 +1,10 @@
 """Leave and Permission Request Management API Router."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from backend.app.api.deps import get_current_user, get_db, require_hr_or_admin
@@ -247,6 +247,11 @@ async def cancel_my_leave_request(
 def list_all_leave_requests(
     status_filter: Optional[str] = Query(None, alias="status"),
     request_type: Optional[str] = Query(None),
+    leave_type: Optional[str] = Query(None),
+    department_id: Optional[int] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    search: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -255,17 +260,41 @@ def list_all_leave_requests(
     """Retrieve all company leave and permission requests (Admin and HR only)."""
     query = (
         db.query(LeaveRequest)
+        .join(User, LeaveRequest.user_id == User.id)
         .options(
             joinedload(LeaveRequest.user).joinedload(User.department),
             joinedload(LeaveRequest.reviewer),
         )
     )
 
-    if status_filter and status_filter.strip():
+    if status_filter and status_filter.strip() and status_filter.strip().upper() != "ALL":
         query = query.filter(LeaveRequest.status == status_filter.strip().upper())
 
-    if request_type and request_type.strip():
+    if request_type and request_type.strip() and request_type.strip().upper() != "ALL":
         query = query.filter(LeaveRequest.request_type == request_type.strip().upper())
+
+    if leave_type and leave_type.strip() and leave_type.strip().upper() != "ALL":
+        query = query.filter(LeaveRequest.leave_type == leave_type.strip().upper())
+
+    if department_id:
+        query = query.filter(User.department_id == department_id)
+
+    if start_date:
+        query = query.filter(LeaveRequest.end_date >= start_date)
+
+    if end_date:
+        query = query.filter(LeaveRequest.start_date <= end_date)
+
+    if search and search.strip():
+        s_term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                User.full_name.ilike(s_term),
+                User.employee_id.ilike(s_term),
+                LeaveRequest.reason.ilike(s_term),
+                LeaveRequest.admin_notes.ilike(s_term),
+            )
+        )
 
     requests = (
         query.order_by(LeaveRequest.created_at.desc())
@@ -275,6 +304,42 @@ def list_all_leave_requests(
     )
 
     return [_format_leave_out(r) for r in requests]
+
+
+@router.get("/export")
+def export_leave_report_endpoint(
+    format: str = Query("csv", description="Export format: csv, xlsx, or pdf"),
+    start_date: Optional[date] = Query(None, description="Filter start date"),
+    end_date: Optional[date] = Query(None, description="Filter end date"),
+    department_id: Optional[int] = Query(None, description="Filter by department ID"),
+    employee_id: Optional[str] = Query(None, description="Filter by employee ID"),
+    status: Optional[str] = Query(None, description="Filter by status (APPROVED, PENDING, etc.)"),
+    request_type: Optional[str] = Query(None, description="Filter by category (LEAVE/PERMISSION)"),
+    leave_type: Optional[str] = Query(None, description="Filter by leave type (CASUAL, SICK, etc.)"),
+    search: Optional[str] = Query(None, description="Search keyword in employee, ID, notes"),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_hr_or_admin),
+):
+    """Export leave and permission compliance report in CSV, Excel (.xlsx), or PDF format."""
+    from backend.app.services.reports import generate_leave_report
+    content, media_type, filename = generate_leave_report(
+        db=db,
+        start_date=start_date,
+        end_date=end_date,
+        department_id=department_id,
+        employee_id=employee_id,
+        status=status,
+        request_type=request_type,
+        leave_type=leave_type,
+        search=search,
+        report_format=format,
+    )
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/pending-count")

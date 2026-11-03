@@ -24,6 +24,8 @@ import {
   Calendar,
   TrendingUp,
   Percent,
+  FileDown,
+  ChevronDown,
 } from 'lucide-react';
 import api from '../services/api';
 import { LeaveActionPayload, LeaveRequest, LeaveStatus } from '../types';
@@ -42,9 +44,10 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
   const [loading, setLoading] = useState<boolean>(true);
   const [totalCount, setTotalCount] = useState<number>(0);
 
-  // Filters
+  // Top Queue Filters
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
+  const [queueLeaveTypeFilter, setQueueLeaveTypeFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Action Modal State (Approve, Reject, Enquire)
@@ -59,7 +62,14 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
   const [reportSearch, setReportSearch] = useState<string>('');
   const [reportStatusFilter, setReportStatusFilter] = useState<string>('ALL');
   const [reportTypeFilter, setReportTypeFilter] = useState<string>('ALL');
+  const [reportLeaveTypeFilter, setReportLeaveTypeFilter] = useState<string>('ALL');
   const [reportDeptFilter, setReportDeptFilter] = useState<string>('ALL');
+  const [reportStartDate, setReportStartDate] = useState<string>('');
+  const [reportEndDate, setReportEndDate] = useState<string>('');
+
+  // Export Modal State & Loading
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
+  const [exportLoadingFormat, setExportLoadingFormat] = useState<string | null>(null);
 
   // Fetch Requests
   const fetchRequests = useCallback(async () => {
@@ -144,7 +154,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
     }
   };
 
-  // Filtered by Status, Type, and Search Query
+  // Filtered by Status, Type, Leave Type, and Search Query (Top Queue)
   const filteredRequests = requests.filter((r) => {
     // 1. Status Tab Filter
     if (statusFilter !== 'ALL' && r.status !== statusFilter) {
@@ -154,7 +164,11 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
     if (typeFilter !== 'ALL' && r.request_type !== typeFilter) {
       return false;
     }
-    // 3. Search Query Filter
+    // 3. Queue Leave Type Filter
+    if (queueLeaveTypeFilter !== 'ALL' && r.leave_type !== queueLeaveTypeFilter) {
+      return false;
+    }
+    // 4. Search Query Filter
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     const name = r.full_name || r.employee_name || '';
@@ -184,23 +198,47 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
     .filter((r) => r.request_type === 'PERMISSION' && r.status === 'APPROVED')
     .reduce((sum, r) => sum + (r.duration_hours || 0), 0);
 
+  const calcDays = (start: string, end?: string) => {
+    try {
+      const s = new Date(start);
+      const e = new Date(end || start);
+      const d = Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 3600 * 24)) + 1);
+      return isNaN(d) ? 1 : d;
+    } catch {
+      return 1;
+    }
+  };
+
   const totalLeaveDays = requests
     .filter((r) => r.request_type === 'LEAVE' && r.status === 'APPROVED')
-    .reduce((sum, r) => {
-      try {
-        const s = new Date(r.start_date);
-        const e = new Date(r.end_date || r.start_date);
-        const d = Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 3600 * 24)) + 1);
-        return sum + (isNaN(d) ? 1 : d);
-      } catch {
-        return sum + 1;
-      }
-    }, 0);
+    .reduce((sum, r) => sum + calcDays(r.start_date, r.end_date), 0);
 
-  // Type Distribution
+  // Leaves Taken by Type (APPROVED ONLY - crucial for HR visibility)
+  const casualTakenRequests = approvedList.filter((r) => r.leave_type === 'CASUAL');
+  const casualTakenCount = casualTakenRequests.length;
+  const casualTakenDays = casualTakenRequests.reduce((sum, r) => sum + calcDays(r.start_date, r.end_date), 0);
+
+  const sickTakenRequests = approvedList.filter((r) => r.leave_type === 'SICK');
+  const sickTakenCount = sickTakenRequests.length;
+  const sickTakenDays = sickTakenRequests.reduce((sum, r) => sum + calcDays(r.start_date, r.end_date), 0);
+
+  const annualTakenRequests = approvedList.filter((r) => r.leave_type === 'ANNUAL');
+  const annualTakenCount = annualTakenRequests.length;
+  const annualTakenDays = annualTakenRequests.reduce((sum, r) => sum + calcDays(r.start_date, r.end_date), 0);
+
+  const emergencyTakenRequests = approvedList.filter((r) => r.leave_type === 'EMERGENCY');
+  const emergencyTakenCount = emergencyTakenRequests.length;
+  const emergencyTakenDays = emergencyTakenRequests.reduce((sum, r) => sum + calcDays(r.start_date, r.end_date), 0);
+
+  const permTakenRequests = approvedList.filter((r) => r.request_type === 'PERMISSION');
+  const permTakenCount = permTakenRequests.length;
+  const permTakenHours = permTakenRequests.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
+
+  // All Requests distribution (Total submitted)
   const casualCount = requests.filter((r) => r.leave_type === 'CASUAL').length;
   const sickCount = requests.filter((r) => r.leave_type === 'SICK').length;
   const annualCount = requests.filter((r) => r.leave_type === 'ANNUAL').length;
+  const emergencyCount = requests.filter((r) => r.leave_type === 'EMERGENCY').length;
   const permissionsCount = requests.filter((r) => r.request_type === 'PERMISSION').length;
 
   // Department Breakdown
@@ -217,7 +255,10 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
   const filteredReportRequests = requests.filter((r) => {
     if (reportStatusFilter !== 'ALL' && r.status !== reportStatusFilter) return false;
     if (reportTypeFilter !== 'ALL' && r.request_type !== reportTypeFilter) return false;
+    if (reportLeaveTypeFilter !== 'ALL' && r.leave_type !== reportLeaveTypeFilter) return false;
     if (reportDeptFilter !== 'ALL' && (r.department_name || 'General') !== reportDeptFilter) return false;
+    if (reportStartDate && r.end_date && r.end_date < reportStartDate) return false;
+    if (reportEndDate && r.start_date && r.start_date > reportEndDate) return false;
 
     if (!reportSearch.trim()) return true;
     const query = reportSearch.toLowerCase();
@@ -233,7 +274,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
     );
   });
 
-  // Export CSV Report
+  // Client-side fallback CSV
   const exportToCSV = () => {
     if (requests.length === 0) {
       onNotify({
@@ -250,7 +291,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
       'Employee Name',
       'Department',
       'Category',
-      'Type',
+      'Leave Type',
       'Start Date',
       'End Date',
       'Start Time',
@@ -285,7 +326,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
     ]);
 
     const csvContent =
-      'data:text/csv;charset=utf-8,' +
+      'data:text/csv;charset=utf-8,\uFEFF' +
       [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
 
     const encodedUri = encodeURI(csvContent);
@@ -302,8 +343,55 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
     onNotify({
       type: 'success',
       title: 'Report Downloaded',
-      message: `Exported ${targetList.length} leave & permission records successfully.`,
+      message: `Exported ${targetList.length} leave & permission records successfully (CSV).`,
     });
+  };
+
+  // Multi-format Report Download Handler (Calls Backend API with active filters)
+  const handleExportFormat = async (format: 'csv' | 'xlsx' | 'pdf') => {
+    if (requests.length === 0) {
+      onNotify({
+        type: 'warning',
+        title: 'No Records',
+        message: 'No leave or permission records available to export.',
+      });
+      return;
+    }
+
+    setExportLoadingFormat(format);
+    try {
+      const result = await api.exportLeaveReport({
+        format,
+        status: reportStatusFilter !== 'ALL' ? reportStatusFilter : undefined,
+        request_type: reportTypeFilter !== 'ALL' ? reportTypeFilter : undefined,
+        leave_type: reportLeaveTypeFilter !== 'ALL' ? reportLeaveTypeFilter : undefined,
+        start_date: reportStartDate || undefined,
+        end_date: reportEndDate || undefined,
+        search: reportSearch.trim() || undefined,
+      });
+
+      api.downloadBlob(result.blob, result.filename);
+
+      onNotify({
+        type: 'success',
+        title: `${format.toUpperCase()} Export Complete`,
+        message: `Successfully downloaded ${result.filename}.`,
+      });
+      setShowExportModal(false);
+    } catch (err) {
+      console.error('Export error, falling back to client CSV:', err);
+      if (format === 'csv') {
+        exportToCSV();
+      } else {
+        onNotify({
+          type: 'error',
+          title: 'Export Failed',
+          message: `Could not export report as ${format.toUpperCase()}. Please check network or try CSV export.`,
+        });
+      }
+    } finally {
+      setExportLoadingFormat(null);
+    }
   };
 
   return (
@@ -369,18 +457,35 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
         </div>
 
         {/* Right Search & Request Type */}
-        <div className="flex items-center space-x-3">
+        {/* Right Search, Category & Leave Type Filters */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
             className="px-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
           >
-            <option value="ALL">All Types</option>
+            <option value="ALL">All Categories</option>
             <option value="LEAVE">Leaves Only</option>
             <option value="PERMISSION">Permissions Only</option>
           </select>
 
-          <div className="relative flex-1 sm:w-64">
+          <select
+            value={queueLeaveTypeFilter}
+            onChange={(e) => setQueueLeaveTypeFilter(e.target.value)}
+            className="px-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="ALL">All Leave Types</option>
+            <option value="CASUAL">Casual Leave (CL)</option>
+            <option value="SICK">Medical / Sick Leave (SL)</option>
+            <option value="ANNUAL">Annual Leave (AL)</option>
+            <option value="EMERGENCY">Emergency Leave (EL)</option>
+            <option value="PERMISSION_EARLY_EXIT">Early Exit Permission</option>
+            <option value="PERMISSION_LATE_ENTRY">Late Entry Permission</option>
+            <option value="PERMISSION_OFFICIAL">Official Outing</option>
+            <option value="OTHER">Other</option>
+          </select>
+
+          <div className="relative flex-1 sm:w-56">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -590,25 +695,58 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
             </div>
           </div>
 
-          {/* Action Buttons: Export CSV & Print */}
-          <div className="flex items-center space-x-3 w-full md:w-auto">
+          {/* Action Buttons: Multi-Format Report Downloads & Print */}
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
               onClick={() => window.print()}
-              className="flex-1 md:flex-none flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold transition-all shadow-sm"
+              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold transition-all shadow-sm"
               title="Print Summary Report"
             >
-              <Printer className="w-4 h-4 text-slate-400" />
-              <span>Print Report</span>
+              <Printer className="w-3.5 h-3.5 text-slate-400" />
+              <span>Print</span>
             </button>
 
+            {/* Quick Excel Download (.xlsx) */}
             <button
-              onClick={exportToCSV}
-              className="flex-1 md:flex-none flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-950/50"
-              title="Download Full Leave & Permissions Report as CSV"
+              onClick={() => handleExportFormat('xlsx')}
+              disabled={exportLoadingFormat !== null}
+              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800 text-emerald-300 text-xs font-semibold transition-all shadow-sm disabled:opacity-50"
+              title="Download Filtered Leaves Report as Microsoft Excel (.xlsx)"
             >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Export CSV Report</span>
-              <Download className="w-3.5 h-3.5 ml-1" />
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{exportLoadingFormat === 'xlsx' ? 'Exporting...' : 'Excel (.xlsx)'}</span>
+            </button>
+
+            {/* Quick PDF Download (.pdf) */}
+            <button
+              onClick={() => handleExportFormat('pdf')}
+              disabled={exportLoadingFormat !== null}
+              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900/80 border border-rose-800 text-rose-300 text-xs font-semibold transition-all shadow-sm disabled:opacity-50"
+              title="Download Filtered Leaves Report as Corporate PDF (.pdf)"
+            >
+              <FileText className="w-3.5 h-3.5 text-rose-400" />
+              <span>{exportLoadingFormat === 'pdf' ? 'Exporting...' : 'PDF (.pdf)'}</span>
+            </button>
+
+            {/* Quick CSV Download (.csv) */}
+            <button
+              onClick={() => handleExportFormat('csv')}
+              disabled={exportLoadingFormat !== null}
+              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold transition-all shadow-sm disabled:opacity-50"
+              title="Download Filtered Leaves Report as CSV (.csv)"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-400" />
+              <span>{exportLoadingFormat === 'csv' ? 'Exporting...' : 'CSV'}</span>
+            </button>
+
+            {/* Full Export Options Modal */}
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-950/50"
+              title="Customize Filters & Export Report in Multiple Formats"
+            >
+              <FileDown className="w-4 h-4" />
+              <span>Export Hub</span>
             </button>
           </div>
         </div>
@@ -687,6 +825,159 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
           </div>
         </div>
 
+        {/* HR Time-Off Intelligence: Leaves Taken by Type Widget */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-950/80 border border-emerald-800/80 flex items-center justify-center text-emerald-400">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>Leaves & Permissions Taken (Approved Time-Off Breakdown)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 lowercase">
+                    for hr
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Total approved leaves taken across each type. Click any card to filter the Historical Audit Ledger below.
+                </p>
+              </div>
+            </div>
+            {reportLeaveTypeFilter !== 'ALL' && (
+              <button
+                onClick={() => setReportLeaveTypeFilter('ALL')}
+                className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-800/60 transition-colors"
+              >
+                Clear Type Filter ({reportLeaveTypeFilter})
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            {/* Casual Leave Taken */}
+            <button
+              type="button"
+              onClick={() => setReportLeaveTypeFilter(reportLeaveTypeFilter === 'CASUAL' ? 'ALL' : 'CASUAL')}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+                reportLeaveTypeFilter === 'CASUAL'
+                  ? 'bg-emerald-950/70 border-emerald-500 ring-2 ring-emerald-500/30'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-emerald-800/80 hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold uppercase tracking-wider text-emerald-400">Casual Leave</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono">CL</span>
+              </div>
+              <div className="mt-2.5 flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-white">{casualTakenCount}</span>
+                <span className="text-xs font-semibold text-emerald-400">taken</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                {casualTakenDays} {casualTakenDays === 1 ? 'day' : 'days'} consumed
+              </p>
+            </button>
+
+            {/* Medical / Sick Leave Taken */}
+            <button
+              type="button"
+              onClick={() => setReportLeaveTypeFilter(reportLeaveTypeFilter === 'SICK' ? 'ALL' : 'SICK')}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+                reportLeaveTypeFilter === 'SICK'
+                  ? 'bg-rose-950/70 border-rose-500 ring-2 ring-rose-500/30'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-rose-800/80 hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold uppercase tracking-wider text-rose-400">Medical / Sick</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-mono">SL</span>
+              </div>
+              <div className="mt-2.5 flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-white">{sickTakenCount}</span>
+                <span className="text-xs font-semibold text-rose-400">taken</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                {sickTakenDays} {sickTakenDays === 1 ? 'day' : 'days'} consumed
+              </p>
+            </button>
+
+            {/* Annual Leave Taken */}
+            <button
+              type="button"
+              onClick={() => setReportLeaveTypeFilter(reportLeaveTypeFilter === 'ANNUAL' ? 'ALL' : 'ANNUAL')}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+                reportLeaveTypeFilter === 'ANNUAL'
+                  ? 'bg-sky-950/70 border-sky-500 ring-2 ring-sky-500/30'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-sky-800/80 hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold uppercase tracking-wider text-sky-400">Annual Leave</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 font-mono">AL</span>
+              </div>
+              <div className="mt-2.5 flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-white">{annualTakenCount}</span>
+                <span className="text-xs font-semibold text-sky-400">taken</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                {annualTakenDays} {annualTakenDays === 1 ? 'day' : 'days'} consumed
+              </p>
+            </button>
+
+            {/* Emergency Leave Taken */}
+            <button
+              type="button"
+              onClick={() => setReportLeaveTypeFilter(reportLeaveTypeFilter === 'EMERGENCY' ? 'ALL' : 'EMERGENCY')}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+                reportLeaveTypeFilter === 'EMERGENCY'
+                  ? 'bg-amber-950/70 border-amber-500 ring-2 ring-amber-500/30'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-amber-800/80 hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold uppercase tracking-wider text-amber-400">Emergency</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-mono">EL</span>
+              </div>
+              <div className="mt-2.5 flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-white">{emergencyTakenCount}</span>
+                <span className="text-xs font-semibold text-amber-400">taken</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                {emergencyTakenDays} {emergencyTakenDays === 1 ? 'day' : 'days'} consumed
+              </p>
+            </button>
+
+            {/* Hourly Permissions Taken */}
+            <button
+              type="button"
+              onClick={() => {
+                if (reportTypeFilter === 'PERMISSION') {
+                  setReportTypeFilter('ALL');
+                } else {
+                  setReportTypeFilter('PERMISSION');
+                }
+              }}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer col-span-2 sm:col-span-1 ${
+                reportTypeFilter === 'PERMISSION'
+                  ? 'bg-teal-950/70 border-teal-500 ring-2 ring-teal-500/30'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-teal-800/80 hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold uppercase tracking-wider text-teal-400">Permissions</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 font-mono">HOURLY</span>
+              </div>
+              <div className="mt-2.5 flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-white">{permTakenCount}</span>
+                <span className="text-xs font-semibold text-teal-400">granted</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                {permTakenHours.toFixed(1)} hrs total
+              </p>
+            </button>
+          </div>
+        </div>
+
         {/* 2-Column Analytics Distribution Breakdown */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Box 1: Classification & Type Distribution */}
@@ -695,7 +986,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
               <div className="flex items-center space-x-2">
                 <PieChart className="w-4 h-4 text-emerald-400" />
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Request Type Distribution
+                  Request Type Distribution & Taken Status
                 </h3>
               </div>
               <span className="text-xs text-slate-400 font-medium">{totalRequests} Total Records</span>
@@ -707,7 +998,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-slate-300 font-medium">Casual Leave</span>
                   <span className="text-slate-400 font-mono">
-                    {casualCount} ({totalRequests > 0 ? Math.round((casualCount / totalRequests) * 100) : 0}%)
+                    <span className="text-emerald-400 font-semibold">{casualTakenCount} taken</span> / {casualCount} total
                   </span>
                 </div>
                 <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
@@ -721,9 +1012,9 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
               {/* Sick Leave */}
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-slate-300 font-medium">Sick Leave</span>
+                  <span className="text-slate-300 font-medium">Medical / Sick Leave</span>
                   <span className="text-slate-400 font-mono">
-                    {sickCount} ({totalRequests > 0 ? Math.round((sickCount / totalRequests) * 100) : 0}%)
+                    <span className="text-rose-400 font-semibold">{sickTakenCount} taken</span> / {sickCount} total
                   </span>
                 </div>
                 <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
@@ -739,7 +1030,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-slate-300 font-medium">Annual Leave / Vacation</span>
                   <span className="text-slate-400 font-mono">
-                    {annualCount} ({totalRequests > 0 ? Math.round((annualCount / totalRequests) * 100) : 0}%)
+                    <span className="text-sky-400 font-semibold">{annualTakenCount} taken</span> / {annualCount} total
                   </span>
                 </div>
                 <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
@@ -750,17 +1041,33 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
                 </div>
               </div>
 
-              {/* Permissions */}
+              {/* Emergency Leave */}
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-slate-300 font-medium">Permissions / Hourly Outings</span>
+                  <span className="text-slate-300 font-medium">Emergency Leave</span>
                   <span className="text-slate-400 font-mono">
-                    {permissionsCount} ({totalRequests > 0 ? Math.round((permissionsCount / totalRequests) * 100) : 0}%)
+                    <span className="text-amber-400 font-semibold">{emergencyTakenCount} taken</span> / {emergencyCount} total
                   </span>
                 </div>
                 <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
                   <div
                     className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${totalRequests > 0 ? (emergencyCount / totalRequests) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Permissions */}
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-300 font-medium">Permissions / Hourly Outings</span>
+                  <span className="text-slate-400 font-mono">
+                    <span className="text-teal-400 font-semibold">{permTakenCount} granted</span> / {permissionsCount} total
+                  </span>
+                </div>
+                <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                  <div
+                    className="bg-teal-500 h-full rounded-full transition-all duration-500"
                     style={{ width: `${totalRequests > 0 ? (permissionsCount / totalRequests) * 100 : 0}%` }}
                   />
                 </div>
@@ -823,7 +1130,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
             {/* Filter Pills / Search */}
             <div className="flex flex-wrap items-center gap-2.5">
               {/* Search */}
-              <div className="relative min-w-[200px]">
+              <div className="relative min-w-[180px]">
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -859,6 +1166,23 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
                 <option value="PERMISSION">Permission Only</option>
               </select>
 
+              {/* Leave Type Filter (Extra Filter requested for HR) */}
+              <select
+                value={reportLeaveTypeFilter}
+                onChange={(e) => setReportLeaveTypeFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500 font-medium"
+              >
+                <option value="ALL">All Leave Types</option>
+                <option value="CASUAL">Casual Leave (CL)</option>
+                <option value="SICK">Medical / Sick Leave (SL)</option>
+                <option value="ANNUAL">Annual / Vacation (AL)</option>
+                <option value="EMERGENCY">Emergency Leave (EL)</option>
+                <option value="PERMISSION_EARLY_EXIT">Early Exit Permission</option>
+                <option value="PERMISSION_LATE_ENTRY">Late Entry Permission</option>
+                <option value="PERMISSION_OFFICIAL">Official Outing</option>
+                <option value="OTHER">Other</option>
+              </select>
+
               {/* Department Filter */}
               {deptList.length > 0 && (
                 <select
@@ -875,15 +1199,44 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
                 </select>
               )}
 
-              {(reportSearch || reportStatusFilter !== 'ALL' || reportTypeFilter !== 'ALL' || reportDeptFilter !== 'ALL') && (
+              {/* Date Range Inputs */}
+              <div className="flex items-center space-x-1 bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-400">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                <input
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                  title="Filter from start date"
+                  className="bg-transparent text-slate-200 text-xs focus:outline-none w-24"
+                />
+                <span className="text-slate-600">→</span>
+                <input
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                  title="Filter to end date"
+                  className="bg-transparent text-slate-200 text-xs focus:outline-none w-24"
+                />
+              </div>
+
+              {(reportSearch ||
+                reportStatusFilter !== 'ALL' ||
+                reportTypeFilter !== 'ALL' ||
+                reportLeaveTypeFilter !== 'ALL' ||
+                reportDeptFilter !== 'ALL' ||
+                reportStartDate ||
+                reportEndDate) && (
                 <button
                   onClick={() => {
                     setReportSearch('');
                     setReportStatusFilter('ALL');
                     setReportTypeFilter('ALL');
+                    setReportLeaveTypeFilter('ALL');
                     setReportDeptFilter('ALL');
+                    setReportStartDate('');
+                    setReportEndDate('');
                   }}
-                  className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800"
+                  className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 transition-colors"
                 >
                   Reset
                 </button>
@@ -1148,6 +1501,176 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNotify, onRe
                       ? 'Confirm Rejection'
                       : 'Send Enquiry'}
                   </span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Multi-Format Leave Report Export Modal */}
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl relative"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 shadow-md">
+                    <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center text-emerald-400">
+                      <FileDown className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Export Leave & Permissions Report</h3>
+                    <p className="text-xs text-slate-400">
+                      Download filtered compliance records in your preferred format.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Active Filter Scope Summary */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
+                    Current Filter Scope
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono text-[11px]">
+                    {filteredReportRequests.length} records matching
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs font-mono">
+                  <span className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                    Status: <strong className="text-emerald-400">{reportStatusFilter}</strong>
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                    Category: <strong className="text-sky-400">{reportTypeFilter}</strong>
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                    Leave Type: <strong className="text-amber-400">{reportLeaveTypeFilter}</strong>
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                    Dept: <strong className="text-teal-400">{reportDeptFilter}</strong>
+                  </span>
+                  {(reportStartDate || reportEndDate) && (
+                    <span className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                      Dates: <strong className="text-emerald-400">{reportStartDate || 'Start'} → {reportEndDate || 'End'}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {/* Date Adjuster inside modal */}
+                <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2 text-xs">
+                  <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="text-slate-400 text-[11px]">Date Filter:</span>
+                  <input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-slate-500">to</span>
+                  <input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* 3 Format Download Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Excel .xlsx */}
+                <button
+                  type="button"
+                  disabled={exportLoadingFormat !== null}
+                  onClick={() => handleExportFormat('xlsx')}
+                  className="flex flex-col items-center text-center p-4 rounded-2xl bg-slate-950 border border-emerald-900/60 hover:border-emerald-500 hover:bg-emerald-950/20 transition-all group disabled:opacity-50"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform mb-2.5">
+                    <FileSpreadsheet className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold text-white">Excel Spreadsheet</span>
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">.xlsx format</span>
+                  <span className="mt-3 px-3 py-1 rounded-lg bg-emerald-600 group-hover:bg-emerald-500 text-white font-bold text-[11px] shadow-md shadow-emerald-950/40">
+                    {exportLoadingFormat === 'xlsx' ? 'Exporting...' : 'Download'}
+                  </span>
+                </button>
+
+                {/* PDF .pdf */}
+                <button
+                  type="button"
+                  disabled={exportLoadingFormat !== null}
+                  onClick={() => handleExportFormat('pdf')}
+                  className="flex flex-col items-center text-center p-4 rounded-2xl bg-slate-950 border border-rose-900/60 hover:border-rose-500 hover:bg-rose-950/20 transition-all group disabled:opacity-50"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-rose-950 border border-rose-800 flex items-center justify-center text-rose-400 group-hover:scale-110 transition-transform mb-2.5">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold text-white">Corporate PDF</span>
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">.pdf format</span>
+                  <span className="mt-3 px-3 py-1 rounded-lg bg-rose-600 group-hover:bg-rose-500 text-white font-bold text-[11px] shadow-md shadow-rose-950/40">
+                    {exportLoadingFormat === 'pdf' ? 'Exporting...' : 'Download'}
+                  </span>
+                </button>
+
+                {/* CSV .csv */}
+                <button
+                  type="button"
+                  disabled={exportLoadingFormat !== null}
+                  onClick={() => handleExportFormat('csv')}
+                  className="flex flex-col items-center text-center p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-sky-500 hover:bg-sky-950/20 transition-all group disabled:opacity-50"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform mb-2.5">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold text-white">CSV Plain Data</span>
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">.csv format</span>
+                  <span className="mt-3 px-3 py-1 rounded-lg bg-slate-800 group-hover:bg-slate-700 text-white font-bold text-[11px] shadow-md shadow-slate-950/40">
+                    {exportLoadingFormat === 'csv' ? 'Exporting...' : 'Download'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Bottom Print Alternative */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExportModal(false);
+                    setTimeout(() => window.print(), 200);
+                  }}
+                  className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Open direct print preview</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                >
+                  Close
                 </button>
               </div>
             </motion.div>

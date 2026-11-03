@@ -349,6 +349,11 @@ class ApiClient {
   async getAllLeaveRequests(params?: {
     status?: string;
     request_type?: string;
+    leave_type?: string;
+    department_id?: number;
+    start_date?: string;
+    end_date?: string;
+    search?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ total: number; requests: LeaveRequest[] }> {
@@ -359,6 +364,39 @@ class ApiClient {
     return {
       total: totalCount,
       requests: items,
+    };
+  }
+
+  async exportLeaveReport(params: {
+    format: 'csv' | 'xlsx' | 'pdf';
+    start_date?: string;
+    end_date?: string;
+    department_id?: number;
+    employee_id?: string;
+    status?: string;
+    request_type?: string;
+    leave_type?: string;
+    search?: string;
+  }): Promise<{ blob: Blob; filename: string }> {
+    const format = params.format || 'csv';
+    const response = await this.client.get('/leaves/export', {
+      params,
+      responseType: 'blob',
+    });
+
+    let filename = `apexattend_leaves_${new Date().toISOString().slice(0, 10)}.${format}`;
+    const disposition = response.headers['content-disposition'];
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    const contentType = (response.headers['content-type'] as string) || 'application/octet-stream';
+    return {
+      blob: new Blob([response.data], { type: contentType }),
+      filename,
     };
   }
 

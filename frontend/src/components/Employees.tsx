@@ -22,6 +22,7 @@ import {
 import api from '../services/api';
 import { Department, User, UserCreate } from '../types';
 import { playChime } from './Toast';
+import { validateEmail, validateStrongPassword } from '../utils/validation';
 
 interface EmployeesProps {
   onNotify?: (toast: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }) => void;
@@ -53,12 +54,22 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
   const [submittingAdd, setSubmittingAdd] = useState<boolean>(false);
   const [showAddPassword, setShowAddPassword] = useState<boolean>(false);
 
+  // Validation states for Add Employee
+  const [addEmailError, setAddEmailError] = useState<string | null>(null);
+  const [addPasswordError, setAddPasswordError] = useState<string | null>(null);
+  const [addEmailTouched, setAddEmailTouched] = useState<boolean>(false);
+  const [addPasswordTouched, setAddPasswordTouched] = useState<boolean>(false);
+
   // Password Reset / Change State
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
   const [selectedUserForPassword, setSelectedUserForPassword] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState<string>('');
   const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
   const [submittingPassword, setSubmittingPassword] = useState<boolean>(false);
+
+  // Validation states for Password Reset
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [resetPasswordTouched, setResetPasswordTouched] = useState<boolean>(false);
 
   // Face Enrollment Camera State
   const enrollVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -101,6 +112,9 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
   // Handle Add Employee Submit
   const handleAddEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddEmailTouched(true);
+    setAddPasswordTouched(true);
+
     if (!addForm.employee_id || !addForm.full_name || !addForm.email || !addForm.password) {
       if (onNotify) {
         onNotify({
@@ -112,54 +126,29 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
       return;
     }
 
+    // Email validation
+    const emailCheck = validateEmail(addForm.email);
+    setAddEmailError(emailCheck.isValid ? null : emailCheck.message);
+    if (!emailCheck.isValid) {
+      if (onNotify) {
+        onNotify({
+          type: 'warning',
+          title: 'Invalid Email Address',
+          message: emailCheck.message,
+        });
+      }
+      return;
+    }
+
     // Password policy validation
-    const pwd = addForm.password;
-    if (pwd.length < 8) {
+    const passCheck = validateStrongPassword(addForm.password);
+    setAddPasswordError(passCheck.isValid ? null : passCheck.message);
+    if (!passCheck.isValid) {
       if (onNotify) {
         onNotify({
           type: 'warning',
-          title: 'Password Too Short',
-          message: 'Password must be at least 8 characters long.',
-        });
-      }
-      return;
-    }
-    if (!/[A-Z]/.test(pwd)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Uppercase Required',
-          message: 'Password must contain at least one uppercase letter (A-Z).',
-        });
-      }
-      return;
-    }
-    if (!/[a-z]/.test(pwd)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Lowercase Required',
-          message: 'Password must contain at least one lowercase letter (a-z).',
-        });
-      }
-      return;
-    }
-    if (!/\d/.test(pwd)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Number Required',
-          message: 'Password must contain at least one number (0-9).',
-        });
-      }
-      return;
-    }
-    if (!/[^A-Za-z0-9]/.test(pwd)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Special Character Required',
-          message: 'Password must contain at least one special character (!@#$%^&*...).',
+          title: 'Password Policy Error',
+          message: passCheck.message,
         });
       }
       return;
@@ -181,6 +170,10 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
       }
 
       setShowAddModal(false);
+      setAddEmailTouched(false);
+      setAddPasswordTouched(false);
+      setAddEmailError(null);
+      setAddPasswordError(null);
       setAddForm({
         employee_id: '',
         full_name: '',
@@ -356,6 +349,8 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
     setSelectedUserForPassword(user);
     setNewPassword('');
     setShowNewPassword(false);
+    setResetPasswordError(null);
+    setResetPasswordTouched(false);
     setShowPasswordModal(true);
   };
 
@@ -363,58 +358,24 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
     setShowPasswordModal(false);
     setSelectedUserForPassword(null);
     setNewPassword('');
+    setResetPasswordError(null);
+    setResetPasswordTouched(false);
   };
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserForPassword) return;
 
-    if (newPassword.length < 8) {
+    setResetPasswordTouched(true);
+    const passCheck = validateStrongPassword(newPassword);
+    setResetPasswordError(passCheck.isValid ? null : passCheck.message);
+
+    if (!passCheck.isValid) {
       if (onNotify) {
         onNotify({
           type: 'warning',
-          title: 'Password Too Short',
-          message: 'Password must be at least 8 characters long.',
-        });
-      }
-      return;
-    }
-    if (!/[A-Z]/.test(newPassword)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Uppercase Required',
-          message: 'Password must contain at least one uppercase letter (A-Z).',
-        });
-      }
-      return;
-    }
-    if (!/[a-z]/.test(newPassword)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Lowercase Required',
-          message: 'Password must contain at least one lowercase letter (a-z).',
-        });
-      }
-      return;
-    }
-    if (!/\d/.test(newPassword)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Number Required',
-          message: 'Password must contain at least one number (0-9).',
-        });
-      }
-      return;
-    }
-    if (!/[^A-Za-z0-9]/.test(newPassword)) {
-      if (onNotify) {
-        onNotify({
-          type: 'warning',
-          title: 'Special Character Required',
-          message: 'Password must contain at least one special character (!@#$%^&*...).',
+          title: 'Password Policy Error',
+          message: passCheck.message,
         });
       }
       return;
@@ -666,7 +627,7 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                 <h2 className="text-base font-bold text-white">Register Corporate Employee</h2>
               </div>
 
-            <form onSubmit={handleAddEmployeeSubmit} className="space-y-4">
+            <form onSubmit={handleAddEmployeeSubmit} className="space-y-4" noValidate>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Employee ID *</label>
@@ -697,13 +658,38 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Email *</label>
                   <input
-                    type="email"
-                    required
+                    type="text"
                     placeholder="jane.doe@enterprise.corp"
                     value={addForm.email}
-                    onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                    className="w-full bg-slate-850 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    onBlur={() => {
+                      setAddEmailTouched(true);
+                      const res = validateEmail(addForm.email);
+                      setAddEmailError(res.isValid ? null : res.message);
+                    }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAddForm({ ...addForm, email: val });
+                      if (addEmailTouched) {
+                        const res = validateEmail(val);
+                        setAddEmailError(res.isValid ? null : res.message);
+                      }
+                    }}
+                    className={`w-full bg-slate-850 border rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition-all ${
+                      addEmailTouched && addEmailError
+                        ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-950/10'
+                        : 'border-slate-700 focus:border-emerald-500'
+                    }`}
                   />
+                  {addEmailTouched && addEmailError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-[11px] text-rose-400 mt-1 flex items-center space-x-1"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{addEmailError}</span>
+                    </motion.p>
+                  )}
                 </div>
 
                 <div>
@@ -711,11 +697,26 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                   <div className="relative">
                     <input
                       type={showAddPassword ? 'text' : 'password'}
-                      required
                       placeholder="••••••••••••"
                       value={addForm.password}
-                      onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                      className="w-full bg-slate-850 border border-slate-700 rounded-xl pl-3 pr-10 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      onBlur={() => {
+                        setAddPasswordTouched(true);
+                        const res = validateStrongPassword(addForm.password);
+                        setAddPasswordError(res.isValid ? null : res.message);
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAddForm({ ...addForm, password: val });
+                        if (addPasswordTouched) {
+                          const res = validateStrongPassword(val);
+                          setAddPasswordError(res.isValid ? null : res.message);
+                        }
+                      }}
+                      className={`w-full bg-slate-850 border rounded-xl pl-3 pr-10 py-2 text-xs text-white focus:outline-none transition-all ${
+                        addPasswordTouched && addPasswordError
+                          ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-950/10'
+                          : 'border-slate-700 focus:border-emerald-500'
+                      }`}
                     />
                     <button
                       type="button"
@@ -726,6 +727,16 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                       {showAddPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
+                  {addPasswordTouched && addPasswordError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-[11px] text-rose-400 mt-1 flex items-center space-x-1"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{addPasswordError}</span>
+                    </motion.p>
+                  )}
                   <p className="text-[10px] text-emerald-400/90 font-medium mt-1 flex items-center space-x-1">
                     <KeyRound className="w-3 h-3 text-emerald-400 shrink-0" />
                     <span>The employee will use this exact password to sign into the Employee Portal at /emp_login.</span>
@@ -974,7 +985,7 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                 </p>
               </div>
 
-              <form onSubmit={handleUpdatePassword} className="space-y-4">
+              <form onSubmit={handleUpdatePassword} className="space-y-4" noValidate>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     New Password *
@@ -982,11 +993,26 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                   <div className="relative">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
-                      required
                       placeholder="Enter new strong password"
                       value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                      onBlur={() => {
+                        setResetPasswordTouched(true);
+                        const res = validateStrongPassword(newPassword);
+                        setResetPasswordError(res.isValid ? null : res.message);
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNewPassword(val);
+                        if (resetPasswordTouched) {
+                          const res = validateStrongPassword(val);
+                          setResetPasswordError(res.isValid ? null : res.message);
+                        }
+                      }}
+                      className={`w-full bg-slate-950 border rounded-xl pl-3 pr-10 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none transition-all ${
+                        resetPasswordTouched && resetPasswordError
+                          ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-950/10'
+                          : 'border-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
+                      }`}
                     />
                     <button
                       type="button"
@@ -996,6 +1022,16 @@ export const Employees: React.FC<EmployeesProps> = ({ onNotify }) => {
                       {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  {resetPasswordTouched && resetPasswordError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-[11px] text-rose-400 mt-1 flex items-center space-x-1"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{resetPasswordError}</span>
+                    </motion.p>
+                  )}
                 </div>
 
                 {/* Password Policy Live Pills */}

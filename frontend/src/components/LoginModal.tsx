@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, X, LogIn, Lock, Mail, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 import { User } from '../types';
+import { validateLoginIdentifier, validateLoginPassword } from '../utils/validation';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -17,9 +18,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Field validation and touch states
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
   const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      setError('Please enter both corporate email or employee ID and password.');
+    setEmailTouched(true);
+    setPasswordTouched(true);
+
+    const emailCheck = validateLoginIdentifier(email);
+    const passCheck = validateLoginPassword(password);
+
+    setEmailError(emailCheck.isValid ? null : emailCheck.message);
+    setPasswordError(passCheck.isValid ? null : passCheck.message);
+
+    if (!emailCheck.isValid || !passCheck.isValid) {
       return;
     }
 
@@ -100,39 +115,82 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
                 handleLogin();
               }}
               className="space-y-4"
+              noValidate
             >
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Corporate Email or Employee ID
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Mail className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${
+                    emailTouched && emailError ? 'text-rose-400' : 'text-slate-500'
+                  }`} />
                   <input
                     type="text"
                     value={email}
+                    onBlur={() => {
+                      setEmailTouched(true);
+                      const res = validateLoginIdentifier(email);
+                      setEmailError(res.isValid ? null : res.message);
+                    }}
                     onChange={(ev) => {
-                      setEmail(ev.target.value);
+                      const val = ev.target.value;
+                      setEmail(val);
                       if (error) setError(null);
+                      if (emailTouched) {
+                        const res = validateLoginIdentifier(val);
+                        setEmailError(res.isValid ? null : res.message);
+                      }
                     }}
                     placeholder="e.g. admin@company.com or EMP001"
-                    className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-950 border border-slate-700/80 rounded-xl text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                    className={`w-full pl-9 pr-3 py-2.5 text-sm bg-slate-950 border rounded-xl text-slate-100 placeholder:text-slate-600 focus:outline-none transition-all ${
+                      emailTouched && emailError
+                        ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-950/10'
+                        : 'border-slate-700/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+                    }`}
                   />
                 </div>
+                {emailTouched && emailError && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-[11px] text-rose-400 mt-1 flex items-center space-x-1"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{emailError}</span>
+                  </motion.p>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Lock className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${
+                    passwordTouched && passwordError ? 'text-rose-400' : 'text-slate-500'
+                  }`} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
+                    onBlur={() => {
+                      setPasswordTouched(true);
+                      const res = validateLoginPassword(password);
+                      setPasswordError(res.isValid ? null : res.message);
+                    }}
                     onChange={(ev) => {
-                      setPassword(ev.target.value);
+                      const val = ev.target.value;
+                      setPassword(val);
                       if (error) setError(null);
+                      if (passwordTouched) {
+                        const res = validateLoginPassword(val);
+                        setPasswordError(res.isValid ? null : res.message);
+                      }
                     }}
                     placeholder="••••••••••••"
-                    className="w-full pl-9 pr-10 py-2.5 text-sm bg-slate-950 border border-slate-700/80 rounded-xl text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                    className={`w-full pl-9 pr-10 py-2.5 text-sm bg-slate-950 border rounded-xl text-slate-100 placeholder:text-slate-600 focus:outline-none transition-all ${
+                      passwordTouched && passwordError
+                        ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-950/10'
+                        : 'border-slate-700/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+                    }`}
                   />
                   <button
                     type="button"
@@ -143,6 +201,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {passwordTouched && passwordError && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-[11px] text-rose-400 mt-1 flex items-center space-x-1"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{passwordError}</span>
+                  </motion.p>
+                )}
               </div>
 
               <motion.button

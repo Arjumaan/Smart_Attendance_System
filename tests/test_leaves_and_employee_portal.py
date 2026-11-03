@@ -320,3 +320,66 @@ def test_approved_leave_reflected_as_on_leave_in_attendance(client: TestClient, 
     assert data[0]["status"] == "ON_LEAVE"
     assert "ANNUAL" in data[0]["notes"]
 
+
+def test_leave_type_filtering_and_multi_format_export(client: TestClient, db_session: Session, seed_department_and_users, auth_headers):
+    """Test filtering leaves by leave_type and exporting in CSV, XLSX, and PDF formats."""
+    users = seed_department_and_users["users"]
+    emp = users[UserRole.EMPLOYEE]
+    mgr = users[UserRole.MANAGER]
+
+    # Create Casual Leave
+    casual_req = LeaveRequest(
+        user_id=emp.id,
+        request_type="LEAVE",
+        leave_type="CASUAL",
+        start_date=date(2026, 11, 20),
+        end_date=date(2026, 11, 21),
+        reason="Family event.",
+        status="APPROVED",
+    )
+    # Create Sick Leave
+    sick_req = LeaveRequest(
+        user_id=mgr.id,
+        request_type="LEAVE",
+        leave_type="SICK",
+        start_date=date(2026, 11, 22),
+        end_date=date(2026, 11, 23),
+        reason="Viral fever.",
+        status="APPROVED",
+    )
+    db_session.add_all([casual_req, sick_req])
+    db_session.commit()
+
+    # 1. Filter by leave_type=CASUAL
+    resp = client.get("/api/v1/leaves/?leave_type=CASUAL", headers=auth_headers[UserRole.ADMIN])
+    assert resp.status_code == 200
+    records = resp.json()
+    assert all(r["leave_type"] == "CASUAL" for r in records)
+    assert any(r["id"] == casual_req.id for r in records)
+
+    # 2. Filter by leave_type=SICK
+    resp = client.get("/api/v1/leaves/?leave_type=SICK", headers=auth_headers[UserRole.ADMIN])
+    assert resp.status_code == 200
+    records = resp.json()
+    assert all(r["leave_type"] == "SICK" for r in records)
+    assert any(r["id"] == sick_req.id for r in records)
+
+    # 3. Export CSV with leave_type filter
+    resp_csv = client.get("/api/v1/leaves/export?format=csv&leave_type=CASUAL", headers=auth_headers[UserRole.ADMIN])
+    assert resp_csv.status_code == 200
+    assert "text/csv" in resp_csv.headers["content-type"]
+    assert "CASUAL" in resp_csv.text
+
+    # 4. Export XLSX
+    resp_xlsx = client.get("/api/v1/leaves/export?format=xlsx", headers=auth_headers[UserRole.ADMIN])
+    assert resp_xlsx.status_code == 200
+    assert "openxmlformats" in resp_xlsx.headers["content-type"]
+    assert len(resp_xlsx.content) > 1000
+
+    # 5. Export PDF
+    resp_pdf = client.get("/api/v1/leaves/export?format=pdf", headers=auth_headers[UserRole.ADMIN])
+    assert resp_pdf.status_code == 200
+    assert resp_pdf.headers["content-type"] == "application/pdf"
+    assert len(resp_pdf.content) > 1000
+
+
